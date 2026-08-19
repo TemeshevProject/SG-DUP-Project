@@ -109,7 +109,7 @@ def generate_apps_script(survey: Survey) -> str:
                 choices = ", ".join(js(o) for o in q.options)
                 lines.append(f"  form.addCheckboxItem()")
                 lines.append(f"    .setTitle({js(title)})")
-                lines.append(f"    .setChoices([{choices}])")
+                lines.append(f"    .setChoiceValues([{choices}])")
                 lines.append(f"    .setRequired({req});")
             elif q.qtype == "scale":
                 low, high = scale_labels(q.text)
