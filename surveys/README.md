@@ -7,22 +7,43 @@
 | Файл | Назначение |
 |------|------------|
 | `DUP_oprosnik_direktorov_filialov.xlsx` | Excel: опросник, анкета для заполнения, шаблон сбора ответов, лист настройки Google Forms |
-| `DUP_oprosnik_Google_Forms_инструкция.md` | Пошаговая инструкция: все вопросы для ручного создания формы в Google Forms |
-| `build_survey.py` | Скрипт генерации Excel (при изменении вопросов) |
+| `DUP_analiz_otvetov_oprosnika.xlsx` | **Сводная таблица анализа** — дашборд, шкалы, взаимодействие с ЦО, ТОП боли, кандидаты на интервью |
+| `DUP_oprosnik_Google_Forms_инструкция.md` | Пошаговая инструкция для Google Forms |
+| `DUP_oprosnik_paket.zip` | Архив всех файлов для загрузки на Google Диск |
+| `ZAGRUZKA_NA_GOOGLE_DISK.md` | Инструкция по загрузке на [папку ДУП](https://drive.google.com/drive/folders/1fM-_x_Lva70JDIzi97QsIJPpjLpywMpD) |
+| `import_survey_responses.py` | Импорт CSV из Google Forms в сводную таблицу |
+| `upload_to_drive.py` | Автозагрузка на Google Диск (нужен `credentials.json`) |
+| `build_survey.py` / `build_analysis_workbook.py` | Генераторы Excel |
 
-## Листы Excel
+## Загрузка на Google Диск
+
+См. **`ZAGRUZKA_NA_GOOGLE_DISK.md`** — перетащите `DUP_oprosnik_paket.zip` или отдельные `.xlsx` в папку ДУП.
+
+## Анализ ответов
+
+1. Соберите ответы в Google Forms
+2. Скачайте CSV или скопируйте из Google Таблицы
+3. Импортируйте в `DUP_analiz_otvetov_oprosnika.xlsx` (лист «Сырые ответы»)
+4. Смотрите листы **Дашборд**, **Шкалы**, **ТОП боли**, **Интервью**
+
+В файле анализа есть 5 демо-строк для проверки — удалите перед реальным импортом.
+
+```bash
+python3 import_survey_responses.py ответы_google_forms.csv
+```
+
+## Листы Excel-опросника
 
 1. **Опросник** — полный перечень вопросов (58 пунктов) с типами ответов
 2. **Сбор ответов** — таблица для агрегации ответов (столбец на каждый вопрос)
 3. **Анкета для заполнения** — печатная/офлайн версия
-4. **Google Forms — настройка** — порядок, типы полей и варианты для переноса в Google Forms
+4. **Google Forms — настройка** — порядок, типы полей и варианты для переноса
 
 ## Google Forms
 
-1. Откройте [Google Forms](https://forms.google.com)
-2. Создайте пустую форму
-3. Следуйте файлу `DUP_oprosnik_Google_Forms_инструкция.md` (блоки A–H)
-4. Настройте условные переходы для вопросов C5, D8, E7
+1. Откройте [forms.google.com](https://forms.google.com)
+2. Следуйте файлу `DUP_oprosnik_Google_Forms_инструкция.md`
+3. Настройте условные переходы для вопросов C5, D8, E7
 
 ## Структура опроса
 
