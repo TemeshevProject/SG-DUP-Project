@@ -18,6 +18,10 @@ dup_project/
 ├── 01_Процессы/
 │   ├── DUP_реестр_бизнес_процессов.xlsx ← реестр процессов + владельцы
 │   └── build_process_registry.py      ← генератор реестра
+├── 02_Презентация/
+│   ├── ДУП_Трансформация_процессов_презентация.pptx ← 20 слайдов по брендбуку
+│   ├── brand.py                       ← фирменный стиль Sergek (тема SG_pptx)
+│   └── build_presentation.py          ← генератор презентации
 └── materials/                         ← исходные материалы с Drive
     ├── Слой А (текущий анализ)/
     ├── Слой B (наследие Confluence)/
@@ -51,6 +55,16 @@ dup_project/
 ```bash
 cd dup_project/01_Процессы
 python3 build_process_registry.py
+```
+
+## Регенерация презентации
+
+Требуется корпоративный шаблон брендбука в `dup_project/brandbook/` — подробности
+и порядок сборки описаны в [02_Презентация/README.md](02_Презентация/README.md).
+
+```bash
+cd dup_project/02_Презентация
+python3 build_presentation.py
 ```
 
 ---
