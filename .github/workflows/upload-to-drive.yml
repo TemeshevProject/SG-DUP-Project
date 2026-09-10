@@ -1,0 +1,73 @@
+name: Upload survey files to Google Drive
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cursor/dup-filial-survey-02bf
+    paths:
+      - 'surveys/**'
+      - '.github/workflows/upload-to-drive.yml'
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install google-api-python-client google-auth google-auth-oauthlib
+
+      - name: Write credentials and upload
+        env:
+          GDRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_JSON }}
+          GDRIVE_OAUTH_TOKEN_JSON: ${{ secrets.GDRIVE_OAUTH_TOKEN_JSON }}
+        run: |
+          set -euo pipefail
+          FOLDER_ID="1fM-_x_Lva70JDIzi97QsIJPpjLpywMpD"
+          if [ -z "${GDRIVE_SERVICE_ACCOUNT_JSON:-}" ] && [ -z "${GDRIVE_OAUTH_TOKEN_JSON:-}" ]; then
+            echo "No Google Drive secrets configured (GDRIVE_SERVICE_ACCOUNT_JSON or GDRIVE_OAUTH_TOKEN_JSON)"
+            exit 1
+          fi
+          python3 << 'PY'
+          import json, os
+          from pathlib import Path
+          from google.oauth2 import service_account
+          from google.oauth2.credentials import Credentials
+          from googleapiclient.discovery import build
+          from googleapiclient.http import MediaFileUpload
+
+          folder_id = os.environ["FOLDER_ID"] if "FOLDER_ID" in os.environ else "1fM-_x_Lva70JDIzi97QsIJPpjLpywMpD"
+          sa = os.environ.get("GDRIVE_SERVICE_ACCOUNT_JSON")
+          tok = os.environ.get("GDRIVE_OAUTH_TOKEN_JSON")
+          if sa:
+              info = json.loads(sa)
+              creds = service_account.Credentials.from_service_account_info(
+                  info, scopes=["https://www.googleapis.com/auth/drive"]
+              )
+          else:
+              creds = Credentials.from_authorized_user_info(json.loads(tok), ["https://www.googleapis.com/auth/drive.file"])
+
+          service = build("drive", "v3", credentials=creds)
+          files = [
+              "surveys/DUP_oprosnik_direktorov_filialov.xlsx",
+              "surveys/DUP_analiz_otvetov_oprosnika.xlsx",
+              "surveys/DUP_oprosnik_Google_Forms_инструкция.md",
+              "surveys/DUP_oprosnik_paket.zip",
+              "surveys/ZAGRUZKA_NA_GOOGLE_DISK.md",
+          ]
+          for path in files:
+              p = Path(path)
+              if not p.exists():
+                  print(f"SKIP missing {path}")
+                  continue
+              media = MediaFileUpload(str(p), resumable=True)
+              meta = {"name": p.name, "parents": [folder_id]}
+              result = service.files().create(body=meta, media_body=media, fields="id,name,webViewLink").execute()
+              print(f"OK {result['name']} -> {result.get('webViewLink', result['id'])}")
+          PY
