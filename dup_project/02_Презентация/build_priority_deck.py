@@ -90,6 +90,31 @@ BY_QUADRANT = Counter(r["quadrant"] for r in SCORED)
 NO_OWNER = [r for r in ROWS if r["role"] == "Не определён"]
 
 
+def wave_1_breakdown():
+    """Разбивка первой волны на три группы.
+
+    Название волны — «Владение и базовая линия», и её размер легко принять
+    за число «ничьих» зон. На деле зон без владельца меньше: волна включает
+    ещё объекты, где владелец формально есть, но роль A внутри ДУП не выделена,
+    и подготовку замера. Группы считаются по данным, а не вписываются руками.
+    """
+    wave = [r for r in ROWS if r["wave"] == P.В1]
+    groups = [
+        ([r for r in wave if r["role"] == "Не определён"],
+         "зон без владельца",
+         "Владелец не закреплён ни в должностных инструкциях, ни в кадровой матрице"),
+        ([r for r in wave if r["role"] != "Не определён" and r["kind"] == P.НАЗНАЧЕНИЕ],
+         "с размытым владением",
+         "Процесс принадлежит ДУП, но единственная роль A внутри ДУП не выделена"),
+        ([r for r in wave if r["role"] != "Не определён" and r["kind"] != P.НАЗНАЧЕНИЕ],
+         "замер и стык с ЦО",
+         "Пилотный аудит, контроль качества данных, матрица кураторов, срок приказов HR"),
+    ]
+    if sum(len(rows) for rows, *_ in groups) != len(wave):
+        raise SystemExit("Разбивка волны 1 не покрывает все её объекты")
+    return [(len(rows), label, note) for rows, label, note in groups]
+
+
 def wave_no(wave: str) -> str:
     """«Волна 2. Быстрые победы…» -> «2»."""
     return wave.split(".")[0].replace("Волна", "").strip()
@@ -279,19 +304,19 @@ def build_waves(prs: Presentation) -> None:
 
     waves = [w for w in P.WAVES if w[0] != P.ВН]
     col_w = (CONTENT_W - 3 * 140000) // 4
-    y = CONTENT_TOP + 160000
+    y = CONTENT_TOP + 120000
     for i, (wave, phase, goal, *_rest) in enumerate(waves):
         accent = WAVE_COLORS[wave]
         x = MARGIN_L + i * (col_w + 140000)
 
-        head = rect(slide, x, y, col_w, 460000, fill=accent, radius=0.10)
+        head = rect(slide, x, y, col_w, 420000, fill=accent, radius=0.10)
         tf = head.text_frame
         tf.vertical_anchor = MSO_ANCHOR.MIDDLE
         tf.margin_top = tf.margin_bottom = 0
         set_text(tf, f"Волна {wave_no(wave)}", size=12, font=FONT_BOLD,
                  color=on(accent), align=PP_ALIGN.CENTER)
 
-        body = rect(slide, x, y + 480000, col_w, 1560000, fill=CARD_BG)
+        body = rect(slide, x, y + 440000, col_w, 1180000, fill=CARD_BG)
         tf = body.text_frame
         tf.vertical_anchor = MSO_ANCHOR.TOP
         set_text(tf, wave_name(wave), size=10.5, font=FONT_BOLD, color=ink(accent),
@@ -305,7 +330,7 @@ def build_waves(prs: Presentation) -> None:
         run.font.size = Pt(9)
         run.font.color.rgb = TEXT
 
-        foot = rect(slide, x, y + 2100000, col_w, 400000, fill=WHITE, line=MIST)
+        foot = rect(slide, x, y + 1680000, col_w, 360000, fill=WHITE, line=MIST)
         tf = foot.text_frame
         tf.vertical_anchor = MSO_ANCHOR.MIDDLE
         tf.margin_top = tf.margin_bottom = 0
@@ -313,11 +338,53 @@ def build_waves(prs: Presentation) -> None:
                  size=9, font=FONT_MED, color=GRAY, align=PP_ALIGN.CENTER)
 
     textbox(
-        slide, MARGIN_L, y + 2620000, CONTENT_W, 300000,
+        slide, MARGIN_L, y + 2120000, CONTENT_W, 250000,
         f"Отдельно: {BY_WAVE[P.ВН]} объекта вне очереди — исполняются другим подразделением "
         f"целиком, срок контролируется через SLA по родительскому объекту.",
         size=8.5, color=STEEL,
     )
+
+    # Размер первой волны больше числа «ничьих» зон, и это первое, о чём спрашивают.
+    breakdown_y = y + 2450000
+    divider(slide, MARGIN_L, breakdown_y - 30000, CONTENT_W)
+    textbox(
+        slide, MARGIN_L, breakdown_y, CONTENT_W, 250000,
+        f"Из чего состоит волна 1: {BY_WAVE[P.В1]} объектов",
+        size=10, font=FONT_MED, color=DARK,
+    )
+
+    groups = wave_1_breakdown()
+    seg_w = (CONTENT_W - 2 * 140000) // 3
+    seg_y = breakdown_y + 290000
+    for i, (count, label, note) in enumerate(groups):
+        accent = RED if i == 0 else BLUE
+        x = MARGIN_L + i * (seg_w + 140000)
+        seg = rect(slide, x, seg_y, seg_w, 810000, fill=CARD_BG)
+        tf = seg.text_frame
+        tf.vertical_anchor = MSO_ANCHOR.TOP
+        tf.margin_top = tf.margin_bottom = Emu(80000)
+
+        p = tf.paragraphs[0]
+        p.line_spacing = 1.0
+        run = p.add_run()
+        run.text = str(count)
+        run.font.name = FONT_BOLD
+        run.font.size = Pt(16)
+        run.font.color.rgb = accent
+        run = p.add_run()
+        run.text = f"   {label}"
+        run.font.name = FONT_BOLD
+        run.font.size = Pt(10)
+        run.font.color.rgb = accent
+
+        para = tf.add_paragraph()
+        para.space_before = Pt(5)
+        para.line_spacing = 1.2
+        run = para.add_run()
+        run.text = note
+        run.font.name = FONT
+        run.font.size = Pt(8.5)
+        run.font.color.rgb = TEXT
 
 
 def build_matrix(prs: Presentation) -> None:
