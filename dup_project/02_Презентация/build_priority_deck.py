@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Презентация для CEO по приоритетам реинжиниринга процессов ДУП.
+"""Доклад по реинжинирингу процессов ДУП: от предпосылок до очереди работ.
 
-Короткий доклад на одно решение: в каком порядке ДУП берётся за процессы
-и почему именно в таком. Все цифры, объекты, волны и правила очерёдности
-импортируются из build_dup_priority.py — того же модуля, который собирает
+Колода ведёт слушателя по одной линии: зачем взялись за проект → что уже
+сделано → что такое система управления процессами и как она измеряет процесс
+→ как построена приоритизация → где мы сейчас и куда идём → очередь работ
+и решения, которые нужны от руководства.
+
+Все цифры, объекты, волны и правила очерёдности импортируются из
+build_dup_priority.py — того же модуля, который собирает
 «ДУП_приоритеты_реинжиниринга.xlsx», поэтому слайды не могут разойтись
-с реестром.
+с реестром. Состояние AS-IS и состав участников тоже считаются по реестру,
+а не набираются вручную.
 
 Фирменный стиль — из корпоративного шаблона «Общие слайды_ver 12.12.24.pptx»
 через brand.py: мастера, макеты, логотип, футер и нумерация наследуются.
@@ -44,13 +49,12 @@ from brand import (
     WHITE,
     YELLOW,
     accent_bar,
-    card,
+    bullets,
     divider,
     ink,
     on,
     rect,
     set_text,
-    stat,
     table_grid,
     textbox,
     title,
@@ -59,14 +63,15 @@ from brand import (
 BASE = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE.parent / "01_Процессы"))
 
+import build_dup_metrics as metrics  # noqa: E402
 import build_dup_priority as P  # noqa: E402
 from build_dup_role_map import DECISIONS_AWAITING_DOCUMENT  # noqa: E402
 
 TEMPLATE = BASE.parent / "brandbook" / "Общие слайды_ver 12.12.24.pptx"
 OUTPUT = BASE / "ДУП_Приоритеты_реинжиниринга_презентация.pptx"
 
-DECK_TITLE = "Приоритеты реинжиниринга"
-DECK_SUBTITLE = "С чего начинаем и почему именно с этого"
+DECK_TITLE = "Реинжиниринг процессов ДУП"
+DECK_SUBTITLE = "От предпосылок до очереди работ"
 DECK_DATE = "Сентябрь 2026"
 
 RELS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
@@ -112,6 +117,186 @@ def wave_1_breakdown():
     return groups
 
 
+# --------------------------------------------------------------------------
+# Содержательная часть доклада
+# --------------------------------------------------------------------------
+# Предпосылки и целевое состояние взяты из паспорта проекта
+# (00_Управление_проектом/01_Паспорт_проекта.md), определения и цикл
+# управления — из Методики KT_METHOD v1. Это повествование, а не данные
+# реестра: цифры в него подставляются из модулей, текст живёт здесь.
+PREMISES = [
+    ("Портфель вырос, управление — нет",
+     "ДУП ведёт доходные проекты компании по ГЧП и госзакупу: фото-видеофиксация, каналы "
+     "связи, эко-мониторинг. Портфель и филиальная сеть выросли, а управление осталось "
+     "на устных договорённостях."),
+    ("Методика компании обязательна, но не применяется",
+     "В компании действует Методика системы управления бизнес-процессами KT_METHOD v1. "
+     "Она обязательна для всех работников (п. 4), однако процессы ДУП по ней не описаны, "
+     "владельцы не закреплены по критериям, метрики не установлены."),
+    ("Спорить о сроке приходится словами",
+     "На старте проекта часть процессов не была закреплена ни за одной должностью, "
+     "а фактические значения не измерялись. Ни доказать эффект изменения, ни назвать "
+     "виновника срыва было нечем — только мнения."),
+]
+
+PROJECT_GOAL = (
+    "Цель проекта: выстроить управляемую, прозрачную и масштабируемую модель управления "
+    "проектами — предсказуемый запуск во всех филиалах, единые правила стыка филиала, "
+    "ДУП и центрального офиса, восстановленное исполнение методологии."
+)
+
+ANALYSED = [
+    "Слой А — текущий анализ: интервью, дерево процессов v4, RACI-матрица, кадровая матрица",
+    "Слой B — наследие методологии «Сергек»: 434 документа, реестр Confluence",
+    "Методика системы управления бизнес-процессами KT_METHOD v1 — 52 страницы",
+    "Матрица стыков ДУП со смежными подразделениями центрального офиса",
+]
+
+# Построенные документы: подпись и функция, считающая объём по данным.
+PRODUCED = [
+    ("Реестр процессной модели",
+     lambda: f"{objects_word(len(P.PROCESSES))}: процессы, подпроцессы и этапы"),
+    ("Карта ролей ДУП",
+     lambda: "роль ДУП и бизнес-владелец у каждого объекта"),
+    ("Реестр метрик",
+     lambda: f"{CRITERIA_COUNT} {plural(CRITERIA_COUNT, 'критерий', 'критерия', 'критериев')} "
+             "оценки с формулой и источником данных"),
+    ("Приоритеты реинжиниринга",
+     lambda: f"{objects_word(len(SCORED))} — балл, место в очереди и обоснование"),
+]
+
+# Определение процесса — глоссарий Методики; цель — п. 3; цикл — Таблица 20.
+PROCESS_DEFINITION = [
+    "Процесс — сквозная последовательность действий, преобразующая входы в результат, "
+    "ценный для клиента. У процесса ровно один бизнес-владелец, отвечающий за результат целиком.",
+    "Система управления процессами нужна, чтобы описывать, измерять и улучшать работу "
+    "одинаково во всех подразделениях, не спорить о том, кто владелец, и не терять "
+    "ответственность при передаче процесса между блоками (п. 3 Методики).",
+]
+
+PROCESS_CYCLE = [
+    ("Проектирование", "Схема, паспорт процесса, карта SIPOC, KPI и SLA, назначение владельца"),
+    ("Внедрение", "Автоматизация шагов, интеграция систем, обучение, ввод в эксплуатацию"),
+    ("Анализ и оценка", "Сбор фактических значений метрик, контроль SLA, отчётность"),
+    ("Улучшение", "Поиск узких мест, оценка зрелости, приоритизация улучшений"),
+    ("Оптимизация", "Устранение узких мест, рост зрелости, тиражирование решений"),
+]
+
+CYCLE_NOTE = (
+    "Проект ДУП стоит на четвёртом этапе для описанных процессов — мы ищем узкие места "
+    "и расставляем улучшения по очереди — и возвращается на первый там, где процедуры "
+    "не существует вовсе."
+)
+
+# Метрики для слайда о формулах: по две-три из каждой группы Методики.
+# Наименования, формулы и целевые значения берутся из справочника, а не набираются.
+FORMULA_KEYS = ["CT", "OT", "WT", "FPY", "DR", "COPQ", "BV", "BNI", "SLA", "AR"]
+
+# Что предлагаем — четыре направления из паспорта проекта.
+TO_BE_DIRECTIONS = [
+    ("Восстановить исполнение",
+     "Там, где процедура уже описана в методологии, — вернуть её в работу"),
+    ("Закрыть подлинные пробелы",
+     "Спроектировать с нуля три процедуры, которых нет ни в одном документе"),
+    ("Закрепить организацию",
+     "Разделение заместителей, полномочия процессного офиса, RACI v2 и паспорта процессов"),
+    ("Оцифровать управляемое",
+     "Единая карточка проекта, автопрогноз и интеграции — после того, как процесс исполняется"),
+]
+
+# Показатели из паспорта проекта: «сегодня» — фактическое состояние, «цель» — горизонт 12 месяцев.
+TO_BE_KPI = [
+    ("Полный пакет документов на старте проекта", "не измеряется", "≥ 90% проектов"),
+    ("Срок старта проекта после передачи от ДРБ", "не измеряется", "−30% к базовой линии"),
+    ("Заявки на оплату, поданные в срок", "по обстоятельствам", "≥ 85%"),
+    ("Покрытие портфеля аудитом по чек-листам", "0% с 2020 года", "100% портфеля за год"),
+    ("Регулярность прогноза поступлений", "чаты и разовые запросы", "100% по календарю"),
+    ("Доля данных в единой системе", "фрагментировано", "≥ 80%"),
+]
+
+# Участники: роль в проекте, кто её исполняет, за что отвечает.
+PARTICIPANTS = [
+    ("Заказчик и спонсор", "Директор ДУП",
+     "Приоритеты, приказы о владении и полномочиях, эскалации"),
+    ("Руководитель проекта", "Назначается из ДУП / ГМП",
+     "Дорожная карта, риски, еженедельный статус"),
+    ("Владельцы процессов", "Зам. по реализации, зам. по сопровождению, ГМП",
+     "Результат своих блоков, паспорта процессов, целевые значения метрик"),
+    ("Процессный офис (ПМО)", "Главный менеджер проектов",
+     "Методология, аудит качества данных, реестр процессов и метрик"),
+    ("Рабочие группы", "ДУП, центральный офис, филиалы",
+     "Регламенты стыков, SLA, проверка решений на практике"),
+]
+
+# Фазы дорожной карты: номер, название, срок, ключевой результат.
+ROADMAP = [
+    ("Фаза 0", "Диагностика", "месяц 1", "Пилотный аудит филиала и базовая линия"),
+    ("Фаза 1", "Фундамент", "месяцы 2–3", "Приказы о владении, RACI v2, целевая оргсхема"),
+    ("Фаза 2", "Исполнение", "месяцы 3–6", "Двенадцать процедур возвращены в работу"),
+    ("Фаза 3", "Проектирование", "месяцы 5–8", "Три новых регламента и разделение замов"),
+    ("Фаза 4", "Цифра и устойчивость", "месяцы 7–12", "Единая карточка проекта, ВНД v2, KPI"),
+]
+
+
+# --------------------------------------------------------------------------
+# Состояние AS-IS: считается по реестру, а не вписывается в слайд
+# --------------------------------------------------------------------------
+# Колонка «Статус AS-IS» карты ролей — свободный текст, но начало строки
+# устойчиво: «Не исполняется …», «Пробел …», «Вне периметра …». Группируем по
+# началу строки, чтобы слайд нельзя было рассинхронизировать с картой ролей.
+AS_IS_FAMILIES = {
+    "не исполняется": "не исполняется",
+    "пробел": "пробел",
+    "вне периметра": "вне периметра",
+}
+
+
+def as_is_count(family: str) -> int:
+    return sum(1 for p in P.PROCESSES if p[14].lower().startswith(family))
+
+
+# Уровень зрелости: в Методике итог процесса равен наименьшему подтверждённому
+# уровню среди семи критериев (п. 179), поэтому берём минимум по всей таблице.
+MATURITY_NOW = min(row[2] for row in metrics.MATURITY).split("—")[0].strip()
+MATURITY_GOAL = metrics.MATURITY_TARGET.split("—")[0].strip()
+MATURITY_PROCESSES = len({row[0] for row in metrics.MATURITY})
+
+CRITERIA_COUNT = len(metrics.criteria_rows())
+
+
+def as_is_rows():
+    """Строки слайда AS-IS: цифра, факт и то, чем он оборачивается.
+
+    Цифры считаются по реестру, формулировки живут здесь. Пятая строка про
+    аудит — из паспорта проекта: база «0% с 2020 года» в реестре не хранится.
+    """
+    dormant = as_is_count("не исполняется")
+    gaps = as_is_count("пробел")
+    return [
+        (str(dormant),
+         f"{plural(dormant, 'объект', 'объекта', 'объектов')} из {len(P.PROCESSES)} "
+         "описаны, но не исполняются",
+         "Проект стартует по договорённости, а не по правилу: срок зависит от того, "
+         "кто вспомнил о шаге и до кого дошли руки."),
+        (str(gaps),
+         f"{plural(gaps, 'процедуры', 'процедуры', 'процедур')} не существует вовсе",
+         "Готовность продукта, передача в сопровождение и открытие филиала решаются "
+         "каждый раз заново и доходят до директора."),
+        ("0",
+         f"критериев из {CRITERIA_COUNT} измеряется сегодня",
+         "Ни срок, ни стоимость, ни качество подтвердить нечем: спор о результате "
+         "выигрывает тот, кто увереннее."),
+        (MATURITY_NOW,
+         "из 5 — уровень зрелости каждого сквозного процесса ДУП",
+         f"По Методике это «Начальный»: результат держится на конкретном человеке, "
+         f"а не на системе. Целевой уровень — {MATURITY_GOAL}."),
+        ("0%",
+         "портфеля проверено аудитом по чек-листам с 2020 года",
+         "Чек-листы написаны и лежат в методологии. Ошибка в проектных данных всплывает "
+         "не на аудите, а на приёмке у госпартнёра."),
+    ]
+
+
 def wave_no(wave: str) -> str:
     """«Волна 2. Быстрые победы…» -> «2»."""
     return wave.split(".")[0].replace("Волна", "").strip()
@@ -120,6 +305,21 @@ def wave_no(wave: str) -> str:
 def wave_name(wave: str) -> str:
     """Часть после номера: «Быстрые победы внутри ДУП»."""
     return wave.split(". ", 1)[1] if ". " in wave else wave
+
+
+def plural(n: int, one: str, few: str, many: str) -> str:
+    """Форма существительного при числе: 1 объект, 2 объекта, 5 объектов.
+
+    Счёт на слайдах берётся из реестра и меняется вместе с ним, поэтому
+    окончание нельзя вписать в текст руками.
+    """
+    if n % 100 in range(11, 15):
+        return many
+    return {1: one, 2: few, 3: few, 4: few}.get(n % 10, many)
+
+
+def objects_word(n: int) -> str:
+    return f"{n} {plural(n, 'объект', 'объекта', 'объектов')}"
 
 
 def clip(text: str, limit: int) -> str:
@@ -219,6 +419,197 @@ def build_cover(prs: Presentation) -> None:
             size=9.5, color=MIST)
 
 
+def build_premises(prs: Presentation) -> None:
+    """Предпосылки: зачем компания вообще взялась за этот проект."""
+    slide = new_slide(prs)
+    title(slide, "Почему мы взялись за этот проект",
+          "Три предпосылки, с которых начался проект трансформации процессов ДУП")
+
+    col_w = (CONTENT_W - 2 * 180000) // 3
+    y = CONTENT_TOP + 140000
+    card_h = 2150000
+    for i, (heading, body) in enumerate(PREMISES):
+        x = MARGIN_L + i * (col_w + 180000)
+        rect(slide, x, y, col_w, card_h, fill=CARD_BG)
+        rect(slide, x, y, 420000, 26000, fill=GREEN, shape=MSO_SHAPE.RECTANGLE)
+        textbox(slide, x + 160000, y + 240000, col_w - 320000, 560000, heading,
+                size=12, font=FONT_BOLD, color=BLUE, line_spacing=1.15)
+        textbox(slide, x + 160000, y + 860000, col_w - 320000, card_h - 1000000,
+                body, size=9, color=TEXT, line_spacing=1.3)
+
+    accent_bar(slide, MARGIN_L, y + card_h + 240000, CONTENT_W, 640000,
+               PROJECT_GOAL, fill=BLUE, size=10.5, align=PP_ALIGN.LEFT)
+
+
+def build_work_done(prs: Presentation) -> None:
+    """Что уже сделано: что разобрали и что из этого построили."""
+    slide = new_slide(prs)
+    title(slide, "Что уже сделано в проекте",
+          "Диагностика завершена: процессная модель описана, владение закреплено, "
+          "метрики и очередь работ определены")
+
+    col_w = (CONTENT_W - 220000) // 2
+    y = CONTENT_TOP + 140000
+    card_h = 2860000
+
+    left = rect(slide, MARGIN_L, y, col_w, card_h)
+    textbox(slide, MARGIN_L + 160000, y + 180000, col_w - 320000, 320000,
+            "Что проанализировали", size=12, font=FONT_BOLD, color=BLUE)
+    bullets(left, ANALYSED, size=9.5, spacing=11, line_spacing=1.3)
+    left.text_frame.margin_top = Emu(620000)
+
+    right_x = MARGIN_L + col_w + 220000
+    rect(slide, right_x, y, col_w, card_h)
+    textbox(slide, right_x + 160000, y + 180000, col_w - 320000, 320000,
+            "Что построено", size=12, font=FONT_BOLD, color=ink(GREEN))
+    item_y = y + 620000
+    for name, measure in PRODUCED:
+        textbox(slide, right_x + 160000, item_y, col_w - 320000, 230000, name,
+                size=10, font=FONT_BOLD, color=DARK)
+        textbox(slide, right_x + 160000, item_y + 230000, col_w - 320000, 300000,
+                measure(), size=9, color=GRAY, line_spacing=1.25)
+        item_y += 540000
+
+    textbox(
+        slide, MARGIN_L, y + card_h + 190000, CONTENT_W, 300000,
+        "Четыре файла собираются из одного источника: правка в карте ролей сама проходит "
+        "в метрики, приоритеты и эту презентацию — разойтись между собой они не могут.",
+        size=9, color=STEEL,
+    )
+
+
+def build_process_system(prs: Presentation) -> None:
+    """Что такое система управления процессами и зачем она нужна."""
+    slide = new_slide(prs)
+    title(slide, "Система управления процессами",
+          "Определение, цель и цикл управления — из Методики KT_METHOD v1, "
+          "обязательной для всех подразделений компании")
+
+    bar_h = 800000
+    accent_bar(slide, MARGIN_L, CONTENT_TOP + 60000, CONTENT_W, bar_h,
+               PROCESS_DEFINITION, fill=BLUE, size=10, align=PP_ALIGN.LEFT)
+
+    label_y = CONTENT_TOP + bar_h + 300000
+    textbox(slide, MARGIN_L, label_y, CONTENT_W, 260000,
+            "Цикл управления процессом — пять последовательных этапов (Таблица 20 Методики)",
+            size=10.5, font=FONT_MED, color=DARK)
+
+    col_w = (CONTENT_W - 4 * 120000) // 5
+    y = label_y + 340000
+    for i, (name, action) in enumerate(PROCESS_CYCLE, 1):
+        x = MARGIN_L + (i - 1) * (col_w + 120000)
+        accent = GREEN if i == 4 else BLUE_LIGHT
+        head = rect(slide, x, y, col_w, 380000, fill=accent, radius=0.12)
+        tf = head.text_frame
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        tf.margin_top = tf.margin_bottom = 0
+        set_text(tf, f"{i}. {name}", size=9.5, font=FONT_BOLD, color=on(accent),
+                 align=PP_ALIGN.CENTER)
+        body = rect(slide, x, y + 400000, col_w, 900000, fill=CARD_BG)
+        tf = body.text_frame
+        tf.vertical_anchor = MSO_ANCHOR.TOP
+        set_text(tf, action, size=8.5, color=TEXT, line_spacing=1.25)
+
+    textbox(slide, MARGIN_L, y + 1400000, CONTENT_W, 300000, CYCLE_NOTE,
+            size=9, color=STEEL, line_spacing=1.25)
+
+
+def build_formulas(prs: Presentation) -> None:
+    """Как измеряется процесс: формулы метрик из Методики."""
+    slide = new_slide(prs)
+    title(slide, "Как измеряется процесс",
+          "Формулы и целевые значения взяты из Глав 9–13 Методики, а не придуманы "
+          "под задачу")
+
+    rows = [("Группа", "Метрика", "Формула расчёта", "Целевое значение")]
+    for key in FORMULA_KEYS:
+        name, group, _purpose, formula, _unit, target, _chapter = metrics.METRICS[key]
+        rows.append((group, name, formula, target))
+    end_y = table_grid(
+        slide, MARGIN_L, CONTENT_TOP + 210000, CONTENT_W,
+        [16, 30, 34, 20], rows, row_h=262000, size=8.5,
+    )
+
+    textbox(
+        slide, MARGIN_L, end_y + 220000, CONTENT_W, 420000,
+        [f"В справочнике Методики {len(metrics.METRICS)} метрик; по объектам реестра из них "
+         f"разложено {CRITERIA_COUNT} "
+         f"{plural(CRITERIA_COUNT, 'критерий', 'критерия', 'критериев')} оценки.",
+         "Набор метрик зависит от роли ДУП: владелец отвечает за объект целиком, "
+         "участник — за свой шаг, клиент — за требования к входу и приёмку."],
+        size=9, color=GRAY, line_spacing=1.3, space_after=4,
+    )
+
+
+def build_as_is(prs: Presentation) -> None:
+    """AS-IS: состояние, зафиксированное по каждому объекту реестра."""
+    slide = new_slide(prs)
+    title(slide, "Где мы сейчас",
+          "Состояние зафиксировано по каждому из объектов реестра — это диагноз системы, "
+          "а не оценка людей")
+
+    y = CONTENT_TOP + 120000
+    row_h = 620000
+    rows = as_is_rows()
+    for i, (number, fact, consequence) in enumerate(rows):
+        badge = rect(slide, MARGIN_L, y, 700000, 420000, fill=RED, radius=0.12)
+        tf = badge.text_frame
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+        set_text(tf, number, size=15, font=FONT_BOLD, color=WHITE, align=PP_ALIGN.CENTER)
+
+        text_x = MARGIN_L + 840000
+        text_w = CONTENT_W - 840000
+        textbox(slide, text_x, y - 10000, text_w, 250000, fact,
+                size=11, font=FONT_BOLD, color=DARK)
+        textbox(slide, text_x, y + 240000, text_w, 320000, consequence,
+                size=9, color=GRAY, line_spacing=1.25)
+        if i < len(rows) - 1:
+            divider(slide, MARGIN_L, y + row_h - 80000, CONTENT_W)
+        y += row_h
+
+    textbox(
+        slide, MARGIN_L, y + 30000, CONTENT_W, 300000,
+        "Важная оговорка: двенадцать из пятнадцати узких мест уже описаны в методологии "
+        "компании. Проблема не в том, что никто не придумал правил, а в том, что "
+        "правила перестали исполняться.",
+        size=9, color=STEEL, line_spacing=1.25,
+    )
+
+
+def build_to_be(prs: Presentation) -> None:
+    """TO-BE: что предлагаем сделать и что компания получит."""
+    slide = new_slide(prs)
+    title(slide, "Что предлагаем и что получим",
+          "Целевое состояние: процессы описаны, измеряются и улучшаются по циклу Методики")
+
+    left_w = 3180000
+    y = CONTENT_TOP + 160000
+    textbox(slide, MARGIN_L, y - 60000, left_w, 260000, "Что предлагаем",
+            size=11, font=FONT_BOLD, color=BLUE)
+    row_y = y + 300000
+    for i, (heading, body) in enumerate(TO_BE_DIRECTIONS, 1):
+        numbered_row(slide, MARGIN_L, row_y, left_w, 640000, i, heading, body,
+                     accent=GREEN, heading_size=10, body_size=8.5)
+        row_y += 700000
+
+    right_x = MARGIN_L + left_w + 280000
+    right_w = CONTENT_W - left_w - 280000
+    textbox(slide, right_x, y - 60000, right_w, 260000, "Что получим за 12 месяцев",
+            size=11, font=FONT_BOLD, color=ink(GREEN))
+    rows = [("Показатель", "Сегодня", "Цель")]
+    rows += TO_BE_KPI
+    table_grid(slide, right_x, y + 300000, right_w, [52, 24, 24], rows,
+               row_h=340000, size=8.5)
+
+    textbox(
+        slide, MARGIN_L, row_y + 140000, CONTENT_W, 300000,
+        f"Уровень зрелости процессов поднимается с {MATURITY_NOW} до {MATURITY_GOAL} из 5: "
+        "паспорт процесса, измеряемые метрики и регулярный цикл улучшений.",
+        size=9, color=STEEL, line_spacing=1.25,
+    )
+
+
 def build_headline(prs: Presentation) -> None:
     """Слайд решения: одна мысль и четыре цифры под ней."""
     slide = new_slide(prs)
@@ -233,8 +624,12 @@ def build_headline(prs: Presentation) -> None:
     )
 
     stats = [
-        (str(len(ROWS)), "объектов реестра оценены и поставлены в очередь", GREEN),
-        (str(len(AWAITING_ORDER)), "решений о владении ждут документа — они держат очередь", RED),
+        (str(len(ROWS)),
+         f"{plural(len(ROWS), 'объект', 'объекта', 'объектов')} реестра оценены "
+         "и поставлены в очередь", GREEN),
+        (str(len(AWAITING_ORDER)),
+         f"{plural(len(AWAITING_ORDER), 'решение', 'решения', 'решений')} о владении "
+         "ждут документа — они держат очередь", RED),
         (str(BY_QUADRANT["Быстрые победы"]), "быстрых побед: высокая ценность, лёгкая реализация", GREEN),
         (str(len(P.FIRST_STEPS)), "первых шагов — без бюджета и ИТ-разработки", BLUE),
     ]
@@ -260,22 +655,28 @@ def build_headline(prs: Presentation) -> None:
 
 def build_criteria(prs: Presentation) -> None:
     slide = new_slide(prs)
-    title(slide, "Пять критериев оценки",
-          "Балл по каждому от 1 до 5, умножается на вес, приводится к шкале 0–100")
+    title(slide, "Как считается приоритет",
+          "Пять критериев, шкала от 1 до 5 и вес критерия — одинаково для всех объектов реестра")
 
     rows = [("Критерий", "Вес", "На какой вопрос отвечает")]
     rows += [(name, str(weight), question) for name, weight, question, *_ in P.CRITERIA]
     end_y = table_grid(
-        slide, MARGIN_L, CONTENT_TOP + 260000, CONTENT_W,
-        [30, 10, 60], rows, row_h=370000, size=10,
+        slide, MARGIN_L, CONTENT_TOP + 240000, CONTENT_W,
+        [30, 10, 60], rows, row_h=356000, size=10,
+    )
+
+    accent_bar(
+        slide, MARGIN_L, end_y + 200000, CONTENT_W, 460000,
+        f"Балл объекта = сумма (оценка от 1 до 5 × вес критерия) ÷ {P.MAX_SCORE} × 100",
+        fill=BLUE, size=11, align=PP_ALIGN.LEFT,
     )
 
     textbox(
-        slide, MARGIN_L, end_y + 260000, CONTENT_W, 420000,
+        slide, MARGIN_L, end_y + 740000, CONTENT_W, 420000,
         ["Вес отражает управленческий приоритет: то, что даёт результат, стоит дороже того, "
          "что даёт удобство.",
-         "Объекта на 100 баллов в реестре нет — шкала нужна для сравнения объектов между "
-         "собой, а не для абсолютной оценки."],
+         "В файле приоритетов расписаны все пять ступеней каждой шкалы — оценка 2 или 4 "
+         "не ставится на глаз и защищается на комитете."],
         size=9, color=GRAY, line_spacing=1.3, space_after=4,
     )
 
@@ -332,13 +733,13 @@ def build_waves(prs: Presentation) -> None:
         tf = foot.text_frame
         tf.vertical_anchor = MSO_ANCHOR.MIDDLE
         tf.margin_top = tf.margin_bottom = 0
-        set_text(tf, f"{BY_WAVE[wave]} объектов  ·  {phase.replace(' дорожной карты', '')}",
+        set_text(tf, f"{objects_word(BY_WAVE[wave])}  ·  {phase.replace(' дорожной карты', '')}",
                  size=9, font=FONT_MED, color=GRAY, align=PP_ALIGN.CENTER)
 
     textbox(
         slide, MARGIN_L, y + 2120000, CONTENT_W, 250000,
-        f"Отдельно: {BY_WAVE[P.ВН]} объекта вне очереди — исполняются другим подразделением "
-        f"целиком, срок контролируется через SLA по родительскому объекту.",
+        f"Отдельно: {objects_word(BY_WAVE[P.ВН])} вне очереди — исполняются другим "
+        f"подразделением целиком, срок контролируется через SLA по родительскому объекту.",
         size=8.5, color=STEEL,
     )
 
@@ -346,7 +747,7 @@ def build_waves(prs: Presentation) -> None:
     divider(slide, MARGIN_L, breakdown_y - 30000, CONTENT_W)
     textbox(
         slide, MARGIN_L, breakdown_y, CONTENT_W, 250000,
-        f"Из чего состоит волна 1: {BY_WAVE[P.В1]} объектов",
+        f"Из чего состоит волна 1: {objects_word(BY_WAVE[P.В1])}",
         size=10, font=FONT_MED, color=DARK,
     )
 
@@ -555,6 +956,55 @@ def build_asks(prs: Presentation) -> None:
     )
 
 
+def build_team_roadmap(prs: Presentation) -> None:
+    """Кто делает проект и в какие фазы — последний содержательный слайд."""
+    slide = new_slide(prs)
+    title(slide, "Участники проекта и дорожная карта",
+          "Кто принимает решения, кто исполняет и в каком порядке идут фазы")
+
+    col_w = (CONTENT_W - 4 * 110000) // 5
+    y = CONTENT_TOP + 60000
+    for i, (phase, name, term, result) in enumerate(ROADMAP):
+        x = MARGIN_L + i * (col_w + 110000)
+        accent = GREEN if i <= 1 else BLUE_LIGHT
+        head = rect(slide, x, y, col_w, 340000, fill=accent, radius=0.12)
+        tf = head.text_frame
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        tf.margin_top = tf.margin_bottom = 0
+        set_text(tf, f"{phase} · {term}", size=8.5, font=FONT_BOLD, color=on(accent),
+                 align=PP_ALIGN.CENTER)
+        body = rect(slide, x, y + 360000, col_w, 800000, fill=CARD_BG)
+        tf = body.text_frame
+        tf.vertical_anchor = MSO_ANCHOR.TOP
+        set_text(tf, name, size=10, font=FONT_BOLD, color=ink(accent), line_spacing=1.15)
+        para = tf.add_paragraph()
+        para.space_before = Pt(5)
+        para.line_spacing = 1.25
+        run = para.add_run()
+        run.text = result
+        run.font.name = FONT
+        run.font.size = Pt(8)
+        run.font.color.rgb = TEXT
+
+    table_y = y + 1400000
+    divider(slide, MARGIN_L, table_y - 90000, CONTENT_W)
+    rows = [("Роль в проекте", "Кто", "За что отвечает")]
+    rows += PARTICIPANTS
+    end_y = table_grid(slide, MARGIN_L, table_y + 60000, CONTENT_W,
+                       [22, 30, 48], rows, row_h=286000, size=8.5)
+
+    externals = ", ".join(sorted({
+        metrics.short_owner(p[6]) for p in P.PROCESSES
+        if not p[6].startswith("ДУП")
+    }))
+    textbox(
+        slide, MARGIN_L, end_y + 150000, CONTENT_W, 300000,
+        f"Смежные подразделения, с которыми согласуются стыки: {externals}, филиалы "
+        "и госпартнёр.",
+        size=8.5, color=STEEL, line_spacing=1.25,
+    )
+
+
 def build_closing(prs: Presentation) -> None:
     slide = prs.slides[-1]
     msg = find_shape(slide, "Присоединяйтесь")
@@ -578,16 +1028,26 @@ def main() -> None:
     reserve_partname(prs.slides[1], 90)
     build_cover(prs)
 
+    # Порядок доклада: предпосылки → сделанная работа → как устроена система
+    # управления процессами → как считался приоритет → диагноз и цель →
+    # очередь работ → что нужно от руководства → кто делает и когда.
     for builder in (
-        build_headline,
+        build_premises,
+        build_work_done,
+        build_process_system,
+        build_formulas,
         build_criteria,
         build_rules,
+        build_as_is,
+        build_to_be,
+        build_headline,
         build_waves,
         build_matrix,
         build_queue,
         build_top_value,
         build_first_steps,
         build_asks,
+        build_team_roadmap,
     ):
         builder(prs)
 
