@@ -87,32 +87,28 @@ ROWS = P.objects()
 SCORED = [r for r in ROWS if r["total"] is not None]
 BY_WAVE = Counter(r["wave"] for r in ROWS)
 BY_QUADRANT = Counter(r["quadrant"] for r in SCORED)
-NO_OWNER = [r for r in ROWS if r["role"] == "Не определён"]
+AWAITING_ORDER = [r for r in ROWS if r["kind"] == P.ЗАКРЕПЛЕНИЕ]
+
+# Группы первой волны: набор типов вмешательства, подпись и пояснение.
+# Размер волны — первое, о чём спрашивают, поэтому слайд показывает,
+# из чего она складывается. Состав считается по данным, а не вписывается руками.
+WAVE_1_GROUPS = [
+    ({P.ЗАКРЕПЛЕНИЕ, P.ПРОЕКТ}, "доводим владение до приказа",
+     "Чек-лист передачи между блоками 1 и 2, разделение заместителей, полномочия ПМО"),
+    ({P.БАЗА}, "снимаем базовую линию",
+     "Пилотный аудит одного филиала и регулярный контроль качества данных"),
+    ({P.SLA}, "нормируем срок стыка с ЦО",
+     "Решения волны вступают в силу в день приказа HR — нужен норматив срока"),
+]
 
 
 def wave_1_breakdown():
-    """Разбивка первой волны на три группы.
-
-    Название волны — «Владение и базовая линия», и её размер легко принять
-    за число «ничьих» зон. На деле зон без владельца меньше: волна включает
-    ещё объекты, где владелец формально есть, но роль A внутри ДУП не выделена,
-    и подготовку замера. Группы считаются по данным, а не вписываются руками.
-    """
     wave = [r for r in ROWS if r["wave"] == P.В1]
-    groups = [
-        ([r for r in wave if r["role"] == "Не определён"],
-         "зон без владельца",
-         "Владелец не закреплён ни в должностных инструкциях, ни в кадровой матрице"),
-        ([r for r in wave if r["role"] != "Не определён" and r["kind"] == P.НАЗНАЧЕНИЕ],
-         "с размытым владением",
-         "Процесс принадлежит ДУП, но единственная роль A внутри ДУП не выделена"),
-        ([r for r in wave if r["role"] != "Не определён" and r["kind"] != P.НАЗНАЧЕНИЕ],
-         "замер и стык с ЦО",
-         "Пилотный аудит, контроль качества данных, матрица кураторов, срок приказов HR"),
-    ]
-    if sum(len(rows) for rows, *_ in groups) != len(wave):
+    groups = [(len([r for r in wave if r["kind"] in kinds]), label, note)
+              for kinds, label, note in WAVE_1_GROUPS]
+    if sum(count for count, *_ in groups) != len(wave):
         raise SystemExit("Разбивка волны 1 не покрывает все её объекты")
-    return [(len(rows), label, note) for rows, label, note in groups]
+    return groups
 
 
 def wave_no(wave: str) -> str:
@@ -230,13 +226,14 @@ def build_headline(prs: Presentation) -> None:
     accent_bar(
         slide, MARGIN_L, CONTENT_TOP - 30000, CONTENT_W, 700000,
         ["Первыми берём не самые выгодные процессы, а те, что разблокируют остальные.",
-         "Пока у процесса нет владельца и замера «до», выгоду от его оптимизации нечем доказать."],
+         "Владелец закреплён у каждого объекта. Пока решение не доведено до приказа "
+         "и не снят замер «до», выгоду от оптимизации нечем доказать."],
         fill=BLUE, size=12, align=PP_ALIGN.LEFT,
     )
 
     stats = [
         (str(len(ROWS)), "объектов реестра оценены и поставлены в очередь", GREEN),
-        (str(len(NO_OWNER)), "зон без владельца — они блокируют старт", RED),
+        (str(len(AWAITING_ORDER)), "решения о владении ждут приказа — они держат очередь", RED),
         (str(BY_QUADRANT["Быстрые победы"]), "быстрых побед: высокая ценность, лёгкая реализация", GREEN),
         (str(len(P.FIRST_STEPS)), "первых шагов — без бюджета и ИТ-разработки", BLUE),
     ]
@@ -344,7 +341,6 @@ def build_waves(prs: Presentation) -> None:
         size=8.5, color=STEEL,
     )
 
-    # Размер первой волны больше числа «ничьих» зон, и это первое, о чём спрашивают.
     breakdown_y = y + 2450000
     divider(slide, MARGIN_L, breakdown_y - 30000, CONTENT_W)
     textbox(
@@ -460,7 +456,7 @@ def build_matrix(prs: Presentation) -> None:
 def build_queue(prs: Presentation) -> None:
     slide = new_slide(prs)
     title(slide, "Начало очереди: первые десять объектов",
-          "Волна 1 целиком — вопрос ответственности и базовая линия")
+          "Волна 1 целиком — закрепление владения и базовая линия")
 
     rows = [("№", "Код", "Объект реестра", "Балл", "Что делаем")]
     for r in ROWS[:10]:
@@ -496,7 +492,7 @@ def build_top_value(prs: Presentation) -> None:
         slide, MARGIN_L, end_y + 300000, CONTENT_W, 620000,
         ["Это вход проекта: приём пакета от ДРБ, приоритизация платежей, закупки "
          "и готовность продукта.",
-         f"Они ждут волн {' и '.join(waves_used)}: сначала владельцы и замер, "
+         f"Они ждут волн {' и '.join(waves_used)}: сначала приказы и замер, "
          "иначе эффект будет не доказан, а объявлен."],
         fill=GREEN, size=10, align=PP_ALIGN.LEFT,
     )
@@ -504,14 +500,15 @@ def build_top_value(prs: Presentation) -> None:
 
 def build_first_steps(prs: Presentation) -> None:
     slide = new_slide(prs)
+    shown = 5
     title(slide, "Программа старта: пять первых действий",
-          "Шаги 1–5 закрывают ответственность и снимают базовую линию")
+          "Шаги 1–5 доводят владение до приказа и снимают базовую линию")
 
     y = CONTENT_TOP + 140000
     row_h = 620000
     owner_w = 2200000
     owner_x = MARGIN_L + CONTENT_W - owner_w
-    for i, step in enumerate(P.FIRST_STEPS[:5], 1):
+    for i, step in enumerate(P.FIRST_STEPS[:shown], 1):
         action, objects, owner, phase, result, _why = step
         numbered_row(
             slide, MARGIN_L, y, CONTENT_W - owner_w - 200000, row_h - 80000, i,
@@ -521,14 +518,15 @@ def build_first_steps(prs: Presentation) -> None:
                 size=9, font=FONT_MED, color=ink(GREEN), line_spacing=1.2)
         textbox(slide, owner_x, y + 340000, owner_w, 220000,
                 f"{phase}  ·  {objects}", size=8, color=STEEL)
-        if i < 5:
+        if i < shown:
             divider(slide, MARGIN_L, y + row_h - 90000, CONTENT_W)
         y += row_h
 
     textbox(
         slide, MARGIN_L, y + 40000, CONTENT_W, 280000,
-        "Шаги 6–10 — восстановление исполнения внутри ДУП: приёмка пакета от ДРБ, "
-        "платежи, статус-встречи, прогноз, переносы оборудования.",
+        f"Шаги {shown + 1}–{len(P.FIRST_STEPS)} — восстановление исполнения внутри ДУП: "
+        "матрица кураторов, приёмка пакета от ДРБ, платежи, статус-встречи, прогноз, "
+        "переносы оборудования.",
         size=8.5, color=STEEL,
     )
 
