@@ -60,6 +60,7 @@ BASE = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE.parent / "01_Процессы"))
 
 import build_dup_priority as P  # noqa: E402
+from build_dup_role_map import DECISIONS_AWAITING_DOCUMENT  # noqa: E402
 
 TEMPLATE = BASE.parent / "brandbook" / "Общие слайды_ver 12.12.24.pptx"
 OUTPUT = BASE / "ДУП_Приоритеты_реинжиниринга_презентация.pptx"
@@ -87,7 +88,7 @@ ROWS = P.objects()
 SCORED = [r for r in ROWS if r["total"] is not None]
 BY_WAVE = Counter(r["wave"] for r in ROWS)
 BY_QUADRANT = Counter(r["quadrant"] for r in SCORED)
-AWAITING_ORDER = [r for r in ROWS if r["kind"] == P.ЗАКРЕПЛЕНИЕ]
+AWAITING_ORDER = DECISIONS_AWAITING_DOCUMENT
 
 # Группы первой волны: набор типов вмешательства, подпись и пояснение.
 # Размер волны — первое, о чём спрашивают, поэтому слайд показывает,
@@ -233,7 +234,7 @@ def build_headline(prs: Presentation) -> None:
 
     stats = [
         (str(len(ROWS)), "объектов реестра оценены и поставлены в очередь", GREEN),
-        (str(len(AWAITING_ORDER)), "решения о владении ждут приказа — они держат очередь", RED),
+        (str(len(AWAITING_ORDER)), "решений о владении ждут документа — они держат очередь", RED),
         (str(BY_QUADRANT["Быстрые победы"]), "быстрых побед: высокая ценность, лёгкая реализация", GREEN),
         (str(len(P.FIRST_STEPS)), "первых шагов — без бюджета и ИТ-разработки", BLUE),
     ]
