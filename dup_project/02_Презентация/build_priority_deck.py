@@ -1311,17 +1311,22 @@ def wave_short(wave: str) -> str:
 
 
 def build_catalog(prs: Presentation) -> None:
-    """Полный перечень объектов: волна, балл и тип действия."""
-    page_size = 13
+    """Полный перечень объектов: волна, балл и текст действия без обрезки.
+
+    Колонка «Что делаем» шире остальных: самый длинный шаг — около 90 знаков
+    и укладывается в две строки при 8 pt. Высота строки рассчитана на эти
+    две строки, поэтому страниц по-прежнему пять.
+    """
+    page_size = 11
     items = []
     for r in ROWS:
         items.append((
             "—" if r["rank"] is None else str(r["rank"]),
             r["code"],
-            clip(r["name"], 48),
+            r["name"],
             wave_short(r["wave"]),
             "—" if r["total"] is None else f'{r["total"]:.0f}',
-            clip(r["first"], 42),
+            r["first"],
         ))
     pages = [items[i:i + page_size] for i in range(0, len(items), page_size)]
     for index, page in enumerate(pages, 1):
@@ -1335,7 +1340,7 @@ def build_catalog(prs: Presentation) -> None:
         rows = [("№", "Код", "Объект", "Волна", "Балл", "Что делаем")] + page
         table_grid(
             slide, MARGIN_L, CONTENT_TOP + 20000, CONTENT_W,
-            [6, 10, 40, 8, 8, 28], rows, row_h=250000, size=8,
+            [5, 9, 30, 6, 6, 44], rows, row_h=300000, size=8,
         )
 
 

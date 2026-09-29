@@ -182,7 +182,7 @@ python3 build_dup_priority.py
 ```bash
 cd dup_project/02_Презентация
 python3 build_presentation.py       # ранняя версия доклада, 20 слайдов
-python3 build_priority_deck.py      # действующий доклад, 18 слайдов
+python3 build_priority_deck.py      # действующий доклад, 27 слайдов
 ```
 
 Действующий доклад ведёт от предпосылок проекта и проведённой работы через
