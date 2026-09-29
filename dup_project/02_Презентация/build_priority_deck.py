@@ -45,6 +45,7 @@ from brand import (
     MIST,
     RED,
     STEEL,
+    TEAL_DARK,
     TEXT,
     WHITE,
     YELLOW,
@@ -66,6 +67,13 @@ sys.path.insert(0, str(BASE.parent / "01_Процессы"))
 import build_dup_metrics as metrics  # noqa: E402
 import build_dup_priority as P  # noqa: E402
 from build_dup_role_map import DECISIONS_AWAITING_DOCUMENT  # noqa: E402
+from build_dup_role_map_simple import (  # noqa: E402
+    simple_role,
+    ВЛАДЕЛЕЦ,
+    УЧАСТНИК,
+    КЛИЕНТ,
+    НЕ_ОПРЕДЕЛЁН,
+)
 
 TEMPLATE = BASE.parent / "brandbook" / "Общие слайды_ver 12.12.24.pptx"
 OUTPUT = BASE / "ДУП_Приоритеты_реинжиниринга_презентация.pptx"
@@ -193,16 +201,42 @@ CYCLE_NOTE = (
 # Наименования, формулы и целевые значения берутся из справочника, а не набираются.
 FORMULA_KEYS = ["CT", "OT", "WT", "FPY", "DR", "COPQ", "BV", "BNI", "SLA", "AR"]
 
-# Что предлагаем — четыре направления из паспорта проекта.
-TO_BE_DIRECTIONS = [
-    ("Восстановить исполнение",
-     "Там, где процедура уже описана в методологии, — вернуть её в работу"),
-    ("Закрыть подлинные пробелы",
-     "Спроектировать gate готовности продукта: процедуры нет ни в одном документе"),
-    ("Описать процессы, которыми владеем",
-     "Паспорта блоков 1, 2 и 4, чек-лист передачи и положение о контроле качества данных"),
-    ("Оцифровать управляемое",
-     "Единая карточка проекта, автопрогноз и интеграции — после того, как процесс исполняется"),
+# Инструменты системы управления, которые проект реально применяет.
+# Список собран по Методике и по файлам комплекта, а не по общему словарю.
+PROJECT_TOOLS = [
+    ("Реестр процессов", "Процесс, подпроцесс и этап в одном дереве"),
+    ("Роль в процессе", "Владелец, участник или клиент у каждого объекта"),
+    ("Паспорт процесса", "Границы, вход, выход, владелец, показатели"),
+    ("SIPOC", "Поставщик, вход, шаги, выход, клиент"),
+    ("Метрики", "Формула, единица и источник данных"),
+    ("KPI", "Целевое значение и факт по объекту"),
+    ("SLA", "Норматив срока на стыке с другим подразделением"),
+    ("Базовая линия", "Замер «до» и аудит по чек-листам"),
+    ("Зрелость", "Семь критериев Методики, шкала 1–5"),
+    ("Очередь работ", "Балл, волна и порядок реинжиниринга"),
+    ("Регламент и чек-лист", "Письменное правило, по которому работают"),
+    ("Мониторинговый отчёт", "Проект, операция и портфель на одном контуре"),
+]
+
+# Норматив в методологии уже есть — возвращаем исполнение.
+# Коды сверены с диагнозом «12 из 15» и с текущим реестром после схлопывания строк.
+APPLY_EXISTING = [
+    ("1.1", "Приём пакета от ДРБ", "Чек-лист минимального пакета и возврат неполного комплекта"),
+    ("1.5", "ФЭМ и бюджет", "Ревизия нормативов модели: поверка, переносы, цены"),
+    ("1.7", "Закупки", "Нормативы сроков по шагам и точка эскалации"),
+    ("1.9", "Реестр платежей", "Инструкция трёх потоков ВУ / КИЗ / КОЗ"),
+    ("2.3", "Прогноз поступлений", "Реестр и календарь вместо чата"),
+    ("2.5", "Переносы оборудования", "Учёт «факт против ФЭМ»"),
+    ("2.7", "Дефекты компонентов", "Маршрут из эксплуатации в ТЗ и закупки"),
+    ("4.2", "Аудит данных", "Чек-листы методологии, контур остановлен с 2020"),
+    ("4.3", "Статус и отчётность", "Один регламент: проект, операция, портфель"),
+]
+
+# Норматива нет — пишем правило и сразу начинаем по нему работать.
+CREATE_NEW = [
+    ("1.2", "Готовность продукта", "Gate «пилот → реализация»: критерии, подпись, право остановить старт"),
+    ("2.0", "Передача в сопровождение", "Чек-лист handover: состав, дата, ответственный"),
+    ("Б.5", "Открытие филиала", "Сквозной маршрут Юр → HR → Финблок → ДУП и сроки по этапам"),
 ]
 
 # Показатели из паспорта проекта: «сегодня» — фактическое состояние, «цель» — горизонт 12 месяцев.
@@ -481,39 +515,64 @@ def build_work_done(prs: Presentation) -> None:
 
 
 def build_process_system(prs: Presentation) -> None:
-    """Что такое система управления процессами и зачем она нужна."""
+    """Что такое система управления процессами и какими инструментами её ведём."""
     slide = new_slide(prs)
     title(slide, "Система управления процессами",
-          "Определение, цель и цикл управления — из Методики KT_METHOD v1, "
-          "обязательной для всех подразделений компании")
+          "Цикл из Методики KT_METHOD v1 и инструменты, которыми этот цикл ведём в проекте")
 
-    bar_h = 800000
-    accent_bar(slide, MARGIN_L, CONTENT_TOP + 60000, CONTENT_W, bar_h,
-               PROCESS_DEFINITION, fill=BLUE, size=10, align=PP_ALIGN.LEFT)
+    accent_bar(
+        slide, MARGIN_L, CONTENT_TOP + 20000, CONTENT_W, 520000,
+        PROCESS_DEFINITION, fill=BLUE, size=9.5, align=PP_ALIGN.LEFT,
+    )
 
-    label_y = CONTENT_TOP + bar_h + 300000
-    textbox(slide, MARGIN_L, label_y, CONTENT_W, 260000,
-            "Цикл управления процессом — пять последовательных этапов (Таблица 20 Методики)",
-            size=10.5, font=FONT_MED, color=DARK)
+    label_y = CONTENT_TOP + 580000
+    textbox(slide, MARGIN_L, label_y, CONTENT_W, 220000,
+            "Цикл управления — пять этапов (Таблица 20 Методики)",
+            size=10, font=FONT_MED, color=DARK)
 
-    col_w = (CONTENT_W - 4 * 120000) // 5
-    y = label_y + 340000
+    col_w = (CONTENT_W - 4 * 100000) // 5
+    y = label_y + 240000
     for i, (name, action) in enumerate(PROCESS_CYCLE, 1):
-        x = MARGIN_L + (i - 1) * (col_w + 120000)
+        x = MARGIN_L + (i - 1) * (col_w + 100000)
         accent = GREEN if i == 4 else BLUE_LIGHT
-        head = rect(slide, x, y, col_w, 380000, fill=accent, radius=0.12)
+        head = rect(slide, x, y, col_w, 280000, fill=accent, radius=0.12)
         tf = head.text_frame
         tf.vertical_anchor = MSO_ANCHOR.MIDDLE
         tf.margin_top = tf.margin_bottom = 0
-        set_text(tf, f"{i}. {name}", size=9.5, font=FONT_BOLD, color=on(accent),
+        set_text(tf, f"{i}. {name}", size=9, font=FONT_BOLD, color=on(accent),
                  align=PP_ALIGN.CENTER)
-        body = rect(slide, x, y + 400000, col_w, 900000, fill=CARD_BG)
+        body = rect(slide, x, y + 300000, col_w, 520000, fill=CARD_BG)
         tf = body.text_frame
         tf.vertical_anchor = MSO_ANCHOR.TOP
-        set_text(tf, action, size=8.5, color=TEXT, line_spacing=1.25)
+        set_text(tf, action, size=8, color=TEXT, line_spacing=1.15)
 
-    textbox(slide, MARGIN_L, y + 1400000, CONTENT_W, 300000, CYCLE_NOTE,
-            size=9, color=STEEL, line_spacing=1.25)
+    tools_y = y + 900000
+    textbox(slide, MARGIN_L, tools_y, CONTENT_W, 220000,
+            "Инструменты, которые применяем",
+            size=10, font=FONT_MED, color=DARK)
+
+    gap = 80000
+    tool_w = (CONTENT_W - 5 * gap) // 6
+    tool_h = 620000
+    base_y = tools_y + 250000
+    for i, (name, note) in enumerate(PROJECT_TOOLS):
+        col, row = i % 6, i // 6
+        x = MARGIN_L + col * (tool_w + gap)
+        ty = base_y + row * (tool_h + 70000)
+        card = rect(slide, x, ty, tool_w, tool_h, fill=CARD_BG)
+        tf = card.text_frame
+        tf.vertical_anchor = MSO_ANCHOR.TOP
+        tf.margin_left = tf.margin_right = Emu(70000)
+        tf.margin_top = Emu(60000)
+        set_text(tf, name, size=9, font=FONT_BOLD, color=BLUE, line_spacing=1.05)
+        para = tf.add_paragraph()
+        para.space_before = Pt(3)
+        para.line_spacing = 1.1
+        run = para.add_run()
+        run.text = note
+        run.font.name = FONT
+        run.font.size = Pt(8)
+        run.font.color.rgb = TEXT
 
 
 def build_formulas(prs: Presentation) -> None:
@@ -544,11 +603,11 @@ def build_formulas(prs: Presentation) -> None:
 
 
 def build_as_is(prs: Presentation) -> None:
-    """AS-IS: состояние, зафиксированное по каждому объекту реестра."""
+    """Как работали до того, как собрали систему управления процессами."""
     slide = new_slide(prs)
-    title(slide, "Где мы сейчас",
-          "Состояние зафиксировано по каждому из объектов реестра — это диагноз системы, "
-          "а не оценка людей")
+    title(slide, "Где мы были",
+          "До системы управления: правила либо не исполнялись, либо их не было — "
+          "это диагноз работы, а не оценка людей")
 
     y = CONTENT_TOP + 120000
     row_h = 620000
@@ -579,36 +638,207 @@ def build_as_is(prs: Presentation) -> None:
     )
 
 
-def build_to_be(prs: Presentation) -> None:
-    """TO-BE: что предлагаем сделать и что компания получит."""
+def build_as_is_now(prs: Presentation) -> None:
+    """Что уже дала система управления и что в исполнении пока не изменилось."""
     slide = new_slide(prs)
-    title(slide, "Что предлагаем и что получим",
-          "Целевое состояние: процессы описаны, измеряются и улучшаются по циклу Методики")
+    title(slide, "Где мы сейчас",
+          "Систему управления собрали. Исполнение процессов ещё прежнее — "
+          "очередь как раз про то, чтобы это изменить")
 
-    left_w = 3180000
-    y = CONTENT_TOP + 160000
-    textbox(slide, MARGIN_L, y - 60000, left_w, 260000, "Что предлагаем",
-            size=11, font=FONT_BOLD, color=BLUE)
-    row_y = y + 300000
-    for i, (heading, body) in enumerate(TO_BE_DIRECTIONS, 1):
-        numbered_row(slide, MARGIN_L, row_y, left_w, 640000, i, heading, body,
-                     accent=GREEN, heading_size=10, body_size=8.5)
-        row_y += 700000
+    roles = Counter(simple_role(p[0], p[8], p[6]) for p in P.PROCESSES)
+    left_w = (CONTENT_W - 180000) // 2
+    y = CONTENT_TOP + 80000
+    card_h = 2480000
 
-    right_x = MARGIN_L + left_w + 280000
-    right_w = CONTENT_W - left_w - 280000
-    textbox(slide, right_x, y - 60000, right_w, 260000, "Что получим за 12 месяцев",
-            size=11, font=FONT_BOLD, color=ink(GREEN))
-    rows = [("Показатель", "Сегодня", "Цель")]
-    rows += TO_BE_KPI
-    table_grid(slide, right_x, y + 300000, right_w, [52, 24, 24], rows,
-               row_h=340000, size=8.5)
+    left = rect(slide, MARGIN_L, y, left_w, card_h, fill=CARD_BG)
+    textbox(slide, MARGIN_L + 160000, y + 120000, left_w - 320000, 280000,
+            "Система уже работает", size=13, font=FONT_BOLD, color=ink(GREEN))
+    applied = [
+        f"{objects_word(len(P.PROCESSES))} сведены в один реестр: процесс, подпроцесс, этап",
+        f"Роль ДУП названа у каждого: {roles[ВЛАДЕЛЕЦ]} — владелец, "
+        f"{roles[УЧАСТНИК]} — участник, {roles[КЛИЕНТ]} — клиент. "
+        f"Неназначенных — {roles[НЕ_ОПРЕДЕЛЁН]}",
+        f"{CRITERIA_COUNT} критериев оценки расписаны формулой и источником данных",
+        f"Очередь из {len([w for w in P.WAVES if w[0] != P.ВН])} волн: "
+        "место объекта задаёт балл, паспорт очередь не держит",
+    ]
+    bullets(left, applied, size=10, prefix="— ", spacing=10, line_spacing=1.25)
+    left.text_frame.margin_top = Emu(480000)
+    left.text_frame.margin_left = Emu(140000)
+    left.text_frame.margin_right = Emu(140000)
 
-    textbox(
-        slide, MARGIN_L, row_y + 140000, CONTENT_W, 300000,
-        f"Уровень зрелости процессов поднимается с {MATURITY_NOW} до {MATURITY_GOAL} из 5: "
-        "паспорт процесса, измеряемые метрики и регулярный цикл улучшений.",
-        size=9, color=STEEL, line_spacing=1.25,
+    right_x = MARGIN_L + left_w + 180000
+    right = rect(slide, right_x, y, left_w, card_h, fill=CARD_BG)
+    textbox(slide, right_x + 160000, y + 120000, left_w - 320000, 280000,
+            "В работе процессов пока ничего не сдвинулось",
+            size=13, font=FONT_BOLD, color=RED)
+    still = [
+        f"{as_is_count('не исполняется')} объектов по-прежнему не исполняются так, как написано",
+        f"{as_is_count('пробел')} процедуры по-прежнему нет: готовность продукта",
+        "Ни один критерий ещё не измеряется — факта «до» нет",
+        f"Зрелость каждого сквозного процесса — {MATURITY_NOW} из 5. "
+        "Паспорта блоков 1, 2 и 4 не утверждены",
+    ]
+    bullets(right, still, size=10, prefix="— ", spacing=10, line_spacing=1.25)
+    right.text_frame.margin_top = Emu(480000)
+    right.text_frame.margin_left = Emu(140000)
+    right.text_frame.margin_right = Emu(140000)
+
+    accent_bar(
+        slide, MARGIN_L, y + card_h + 160000, CONTENT_W, 620000,
+        ["Система ответила на вопросы «кто владелец», «чем измеряем» и «что берём первым».",
+         "Срок, деньги и качество сдвинутся, когда заработают регламенты волны запуска, "
+         "а не в момент, когда реестр собран."],
+        fill=BLUE, size=11, align=PP_ALIGN.LEFT,
+    )
+
+
+def build_proposal(prs: Presentation) -> None:
+    """Что делаем с методологией: исполняем написанное или пишем недостающее правило."""
+    slide = new_slide(prs)
+    title(slide, "Что предлагаем",
+          "Норматив есть — возвращаем в работу. Норматива нет — пишем правило и применяем")
+
+    gap = 160000
+    col_w = (CONTENT_W - gap) // 2
+    y = CONTENT_TOP + 140000
+    head_h = 360000
+    body_h = 2100000
+
+    left_head = rect(slide, MARGIN_L, y, col_w, head_h, fill=GREEN, radius=0.08)
+    tf = left_head.text_frame
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    set_text(tf, f"Вернуть в работу — {len(APPLY_EXISTING)} объектов",
+             size=12, font=FONT_BOLD, color=WHITE, align=PP_ALIGN.CENTER)
+    left = rect(slide, MARGIN_L, y + head_h, col_w, body_h, fill=CARD_BG)
+    lines = [f"{code}  {name}. {action}" for code, name, action in APPLY_EXISTING]
+    bullets(left, lines, size=8.5, prefix="", spacing=3, line_spacing=1.12)
+    left.text_frame.margin_top = Emu(80000)
+    left.text_frame.margin_left = Emu(120000)
+    left.text_frame.margin_right = Emu(100000)
+
+    rx = MARGIN_L + col_w + gap
+    right_head = rect(slide, rx, y, col_w, head_h, fill=YELLOW, radius=0.08)
+    tf = right_head.text_frame
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    set_text(tf, "Написать правило и начать применять",
+             size=12, font=FONT_BOLD, color=DARK, align=PP_ALIGN.CENTER)
+    right = rect(slide, rx, y + head_h, col_w, body_h, fill=CARD_BG)
+    tf = right.text_frame
+    tf.word_wrap = True
+    tf.margin_top = Emu(100000)
+    tf.margin_left = Emu(140000)
+    tf.margin_right = Emu(120000)
+    intro = tf.paragraphs[0]
+    intro.line_spacing = 1.15
+    run = intro.add_run()
+    run.text = "В методологии этих процедур нет. Пока их не напишем, каждый случай решается заново."
+    run.font.name = FONT
+    run.font.size = Pt(10)
+    run.font.color.rgb = TEXT
+    for code, name, action in CREATE_NEW:
+        para = tf.add_paragraph()
+        para.space_before = Pt(8)
+        para.line_spacing = 1.15
+        head = para.add_run()
+        head.text = f"{code}  {name}"
+        head.font.name = FONT_BOLD
+        head.font.size = Pt(11)
+        head.font.color.rgb = DARK
+        body = tf.add_paragraph()
+        body.line_spacing = 1.1
+        detail = body.add_run()
+        detail.text = action
+        detail.font.name = FONT
+        detail.font.size = Pt(10)
+        detail.font.color.rgb = GRAY
+
+    foot_y = y + head_h + body_h + 120000
+    foot_w = (CONTENT_W - gap) // 2
+    for x, heading, body in (
+        (MARGIN_L, "Описать то, чем владеем",
+         "Паспорта блоков 1, 2 и 4, чек-лист передачи и положение о контроле качества данных"),
+        (MARGIN_L + foot_w + gap, "Оцифровать то, что уже исполняется",
+         "Единая карточка и автопрогноз — после регламента, иначе в системе закрепится беспорядок"),
+    ):
+        box = rect(slide, x, foot_y, foot_w, 520000, fill=WHITE, line=MIST)
+        tf = box.text_frame
+        tf.margin_left = tf.margin_right = Emu(120000)
+        tf.margin_top = Emu(60000)
+        set_text(tf, heading, size=11, font=FONT_BOLD, color=BLUE)
+        para = tf.add_paragraph()
+        para.space_before = Pt(4)
+        para.line_spacing = 1.1
+        run = para.add_run()
+        run.text = body
+        run.font.name = FONT
+        run.font.size = Pt(9)
+        run.font.color.rgb = TEXT
+
+
+def build_outcomes(prs: Presentation) -> None:
+    """Два контура эффекта: управляемость системы и результат для компании."""
+    slide = new_slide(prs)
+    title(slide, "Что получит компания",
+          "Сначала процессом можно управлять. Затем это видно в сроке, деньгах и прогнозе")
+
+    gap = 160000
+    col_w = (CONTENT_W - gap) // 2
+    y = CONTENT_TOP + 20000
+    head_h = 320000
+
+    manage = [
+        ("Владелец и паспорт", "Границы, вход, выход и один ответственный"),
+        ("Прозрачность", "Показатель с источником данных, а не мнение"),
+        ("Мониторинговый отчёт", "Каждый месяц: проект, операция, портфель"),
+        ("Одинаковый старт", "Старт по чек-листу, а не по памяти"),
+    ]
+    business = [
+        ("Срок старта проекта", "Сегодня не измеряется", "−30% к базовой линии"),
+        ("Полный пакет на старте", "Не измеряется", "≥ 90% проектов"),
+        ("Оплаты в срок", "По обстоятельствам", "≥ 85% заявок"),
+        ("Прогноз поступлений", "Чаты и разовые запросы", "100% по календарю"),
+        ("Аудит портфеля", "0% с 2020 года", "100% за год"),
+    ]
+
+    left_head = rect(slide, MARGIN_L, y, col_w, head_h, fill=BLUE, radius=0.08)
+    tf = left_head.text_frame
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    set_text(tf, "Управляемость и прозрачность",
+             size=13, font=FONT_BOLD, color=WHITE, align=PP_ALIGN.CENTER)
+    row_y = y + head_h + 80000
+    for heading, body in manage:
+        textbox(slide, MARGIN_L, row_y, col_w - 60000, 220000, heading,
+                size=12, font=FONT_BOLD, color=DARK)
+        textbox(slide, MARGIN_L, row_y + 240000, col_w - 80000, 240000, body,
+                size=10, color=GRAY, line_spacing=1.05)
+        row_y += 520000
+
+    rx = MARGIN_L + col_w + gap
+    right_head = rect(slide, rx, y, col_w, head_h, fill=GREEN, radius=0.08)
+    tf = right_head.text_frame
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    set_text(tf, "Срок, деньги, регулярность",
+             size=13, font=FONT_BOLD, color=WHITE, align=PP_ALIGN.CENTER)
+    rows = [("Показатель", "Сейчас", "За 12 месяцев")] + [
+        (name, now, target) for name, now, target in business
+    ]
+    table_grid(slide, rx, y + head_h + 80000, col_w, [40, 32, 28], rows,
+               row_h=300000, size=9)
+
+    box = rect(slide, MARGIN_L, CONTENT_TOP + 2480000, CONTENT_W, 1120000,
+               fill=TEAL_DARK, radius=0.1)
+    tf = box.text_frame
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    tf.margin_left = tf.margin_right = Emu(160000)
+    tf.margin_top = tf.margin_bottom = Emu(70000)
+    set_text(
+        tf,
+        [f"Зрелость с {MATURITY_NOW} до {MATURITY_GOAL}: портфель больше не держится на одном человеке.",
+         "На уровне 1 уход заместителя обнуляет срок, пакет и прогноз: срыв виден, когда его уже принёс госпартнёр.",
+         "На уровне 3 отклонение денег и срока видно в ежемесячном отчёте, пока его можно поправить, "
+         "а смежник отвечает по подписанному SLA."],
+        size=12, font=FONT_BOLD, color=WHITE, line_spacing=1.08,
     )
 
 
@@ -1008,6 +1238,179 @@ def build_team_roadmap(prs: Presentation) -> None:
     )
 
 
+def role_counter():
+    return Counter(simple_role(p[0], p[8], p[6]) for p in P.PROCESSES)
+
+
+def level_counter():
+    return Counter(p[1] for p in P.PROCESSES)
+
+
+def build_perimeter(prs: Presentation) -> None:
+    """Сколько объектов в периметре и в какой роли в них стоит ДУП."""
+    slide = new_slide(prs)
+    title(slide, "Периметр проекта",
+          "Все объекты, которыми система управления будет заниматься")
+
+    levels = level_counter()
+    roles = role_counter()
+    stats = [
+        (str(len(P.PROCESSES)), "объектов в реестре", BLUE),
+        (str(levels["Процесс"]), "процессов, из них 5 — дерево ДУП и 6 — сквозные стыки", GREEN),
+        (str(levels["Подпроцесс"]), "подпроцессов", BLUE),
+        (str(levels["Этап"]), "этапов", GREEN),
+    ]
+    gap = 140000
+    col_w = (CONTENT_W - 3 * gap) // 4
+    y = CONTENT_TOP + 60000
+    card_h = 1280000
+    for i, (number, caption, accent) in enumerate(stats):
+        x = MARGIN_L + i * (col_w + gap)
+        rect(slide, x, y, col_w, card_h, fill=CARD_BG)
+        textbox(slide, x + 120000, y + 140000, col_w - 240000, 520000, number,
+                size=36, font=FONT_BOLD, color=accent, line_spacing=1.0)
+        textbox(slide, x + 120000, y + 700000, col_w - 240000, 480000, caption,
+                size=11, color=GRAY, line_spacing=1.15)
+
+    textbox(slide, MARGIN_L, y + card_h + 160000, CONTENT_W, 240000,
+            "Роль ДУП в этих объектах", size=14, font=FONT_BOLD, color=DARK)
+
+    role_cards = [
+        (roles[ВЛАДЕЛЕЦ], "владелец", "Результат на ДУП", GREEN),
+        (roles[УЧАСТНИК], "участник", "Шаг в чужом процессе", BLUE),
+        (roles[КЛИЕНТ], "клиент", "Принимает результат", YELLOW),
+        (roles[НЕ_ОПРЕДЕЛЁН], "не определён", "Таких объектов нет", GRAY),
+    ]
+    role_y = y + card_h + 420000
+    role_h = 980000
+    for i, (count, name, note, accent) in enumerate(role_cards):
+        x = MARGIN_L + i * (col_w + gap)
+        rect(slide, x, role_y, col_w, role_h, fill=CARD_BG)
+        rect(slide, x, role_y, col_w, 70000, fill=accent, shape=MSO_SHAPE.RECTANGLE)
+        textbox(slide, x + 120000, role_y + 120000, col_w - 240000, 400000,
+                str(count), size=32, font=FONT_BOLD, color=ink(accent))
+        textbox(slide, x + 120000, role_y + 520000, col_w - 240000, 200000,
+                name, size=13, font=FONT_BOLD, color=DARK)
+        textbox(slide, x + 120000, role_y + 720000, col_w - 240000, 200000,
+                note, size=10, color=GRAY, line_spacing=1.05)
+
+    textbox(
+        slide, MARGIN_L, role_y + role_h + 120000, CONTENT_W, 240000,
+        "Корень дерева ДУП.0 в очередь не ставится: его результат складывается из блоков 1–4 "
+        "и сквозных стыков с центральным офисом.",
+        size=10, color=STEEL,
+    )
+
+
+def wave_short(wave: str) -> str:
+    if wave == P.АГ:
+        return "—"
+    if wave == P.ВН:
+        return "вне"
+    return wave_no(wave)
+
+
+def build_catalog(prs: Presentation) -> None:
+    """Полный перечень объектов: волна, балл и тип действия."""
+    page_size = 13
+    items = []
+    for r in ROWS:
+        items.append((
+            "—" if r["rank"] is None else str(r["rank"]),
+            r["code"],
+            clip(r["name"], 48),
+            wave_short(r["wave"]),
+            "—" if r["total"] is None else f'{r["total"]:.0f}',
+            clip(r["first"], 42),
+        ))
+    pages = [items[i:i + page_size] for i in range(0, len(items), page_size)]
+    for index, page in enumerate(pages, 1):
+        slide = new_slide(prs)
+        title(
+            slide,
+            "Перечень процессов",
+            f"Все {len(items)} объектов реестра в порядке очереди. "
+            f"Лист {index} из {len(pages)}",
+        )
+        rows = [("№", "Код", "Объект", "Волна", "Балл", "Что делаем")] + page
+        table_grid(
+            slide, MARGIN_L, CONTENT_TOP + 20000, CONTENT_W,
+            [6, 10, 40, 8, 8, 28], rows, row_h=250000, size=8,
+        )
+
+
+def build_gantt(prs: Presentation) -> None:
+    """Дорожная карта на 12 месяцев: три волны с перекрытием."""
+    slide = new_slide(prs)
+    title(slide, "Дорожная карта",
+          "12 месяцев. Волны перекрываются: стыки начинаются, пока ещё закрывается запуск")
+
+    months = 12
+    label_w = 1680000
+    chart_x = MARGIN_L + label_w
+    chart_w = CONTENT_W - label_w
+    month_w = chart_w // months
+    head_y = CONTENT_TOP + 40000
+    textbox(slide, MARGIN_L, head_y, label_w - 80000, 220000, "Волна",
+            size=9, font=FONT_BOLD, color=GRAY)
+    for m in range(months):
+        textbox(slide, chart_x + m * month_w, head_y, month_w, 220000, str(m + 1),
+                size=9, font=FONT_MED, color=GRAY, align=PP_ALIGN.CENTER)
+
+    # start — номер месяца с нуля, span — длина в месяцах
+    bars = [
+        (P.В1, GREEN, 0, 4, "Победы, паспорта, аудит"),
+        (P.В2, YELLOW, 2, 6, "SLA, gate, маршрут филиала"),
+        (P.В3, BLUE_LIGHT, 6, 6, "Экономика, карточка, автоматизация"),
+    ]
+    row_h = 460000
+    row_gap = 80000
+    y = head_y + 280000
+    for wave, accent, start, span, caption in bars:
+        rect(slide, MARGIN_L, y, CONTENT_W, row_h, fill=CARD_BG, shape=MSO_SHAPE.RECTANGLE)
+        textbox(slide, MARGIN_L + 80000, y + 60000, label_w - 160000, 180000,
+                f"Волна {wave_no(wave)}", size=12, font=FONT_BOLD, color=DARK)
+        textbox(slide, MARGIN_L + 80000, y + 240000, label_w - 160000, 180000,
+                f"мес. {start + 1}–{start + span}", size=10, color=GRAY)
+        for m in range(months):
+            divider(slide, chart_x + m * month_w, y, 8000, color=MIST, thickness=row_h / 9525)
+        bar = rect(
+            slide,
+            chart_x + start * month_w + 20000,
+            y + 70000,
+            span * month_w - 40000,
+            row_h - 140000,
+            fill=accent,
+            radius=0.15,
+        )
+        tf = bar.text_frame
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        tf.margin_left = tf.margin_right = Emu(80000)
+        set_text(tf, caption, size=10, font=FONT_BOLD, color=on(accent), align=PP_ALIGN.CENTER)
+        y += row_h + row_gap
+
+    textbox(slide, MARGIN_L, y + 40000, CONTENT_W, 200000,
+            "Месяцы по горизонтали. Ключевые результаты на стыках волн",
+            size=11, font=FONT_BOLD, color=DARK)
+    marks = [
+        ("1", "Старт: чек-лист приёмки от ДРБ и инструкция платежей"),
+        ("4", "Паспорта блоков 1, 2 и 4, восемь регламентов работают"),
+        ("8", "Подписаны SLA, утверждены gate и маршрут открытия филиала"),
+        ("12", "Зрелость 3, мониторинговый отчёт и карточка проекта"),
+    ]
+    mark_w = (CONTENT_W - 3 * 100000) // 4
+    my = y + 280000
+    for i, (month, text) in enumerate(marks):
+        x = MARGIN_L + i * (mark_w + 100000)
+        badge = rect(slide, x, my, 360000, 280000, fill=BLUE, radius=0.2)
+        tf = badge.text_frame
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        tf.margin_left = tf.margin_right = 0
+        set_text(tf, month, size=12, font=FONT_BOLD, color=WHITE, align=PP_ALIGN.CENTER)
+        textbox(slide, x + 400000, my, mark_w - 420000, 320000, text,
+                size=9, color=TEXT, line_spacing=1.1)
+
+
 def build_closing(prs: Presentation) -> None:
     slide = prs.slides[-1]
     msg = find_shape(slide, "Присоединяйтесь")
@@ -1031,10 +1434,11 @@ def main() -> None:
     reserve_partname(prs.slides[1], 90)
     build_cover(prs)
 
-    # Порядок доклада: предпосылки → сделанная работа → как устроена система
-    # управления процессами → как считался приоритет → диагноз и цель →
-    # очередь работ → что нужно от руководства → кто делает и когда.
+    # Периметр и полный перечень — в начале, чтобы масштаб был виден
+    # до рассказа о том, зачем взялись за проект.
     for builder in (
+        build_perimeter,
+        build_catalog,
         build_premises,
         build_work_done,
         build_process_system,
@@ -1042,7 +1446,9 @@ def main() -> None:
         build_criteria,
         build_rules,
         build_as_is,
-        build_to_be,
+        build_as_is_now,
+        build_proposal,
+        build_outcomes,
         build_headline,
         build_waves,
         build_matrix,
@@ -1051,6 +1457,7 @@ def main() -> None:
         build_first_steps,
         build_asks,
         build_team_roadmap,
+        build_gantt,
     ):
         builder(prs)
 
