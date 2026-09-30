@@ -69,6 +69,7 @@ import build_dup_priority as P  # noqa: E402
 from build_dup_role_map import DECISIONS_AWAITING_DOCUMENT  # noqa: E402
 from build_dup_role_map_simple import (  # noqa: E402
     simple_role,
+    owner_text,
     ВЛАДЕЛЕЦ,
     УЧАСТНИК,
     КЛИЕНТ,
@@ -1310,23 +1311,45 @@ def wave_short(wave: str) -> str:
     return wave_no(wave)
 
 
-def build_catalog(prs: Presentation) -> None:
-    """Полный перечень объектов: волна, балл и текст действия без обрезки.
+# Бизнес-владелец — та же строка, что в карте ролей, а не сокращение подразделения.
+BUSINESS_OWNER = {
+    p[0]: owner_text(p[8], p[6], p[7]) for p in P.PROCESSES
+}
+_ROLE_WORD = {
+    ВЛАДЕЛЕЦ: "владелец",
+    УЧАСТНИК: "участник",
+    КЛИЕНТ: "клиент",
+    НЕ_ОПРЕДЕЛЁН: "",
+}
 
-    Колонка «Что делаем» шире остальных: самый длинный шаг — около 90 знаков
-    и укладывается в две строки при 8 pt. Высота строки рассчитана на эти
-    две строки, поэтому страниц по-прежнему пять.
+
+def level_role(level: str, role: str, target: str) -> str:
+    """Роль ДУП пишется только в столбце уровня этой строки."""
+    if level != target:
+        return ""
+    return _ROLE_WORD.get(role, role.lower())
+
+
+def build_catalog(prs: Presentation) -> None:
+    """Перечень: объект, бизнес-владелец, роль ДУП по уровню, действие, волна и балл.
+
+    Роль ДУП стоит в одном столбце — «Процесс», «Подпроцесс» или «Этап» —
+    по уровню строки. Текст действия и имя владельца не обрезаются: строка
+    рассчитана на три строки при 7 pt.
     """
-    page_size = 11
+    page_size = 8
     items = []
     for r in ROWS:
         items.append((
             "—" if r["rank"] is None else str(r["rank"]),
-            r["code"],
             r["name"],
+            BUSINESS_OWNER[r["code"]],
+            level_role(r["level"], r["role"], "Процесс"),
+            level_role(r["level"], r["role"], "Подпроцесс"),
+            level_role(r["level"], r["role"], "Этап"),
+            r["first"],
             wave_short(r["wave"]),
             "—" if r["total"] is None else f'{r["total"]:.0f}',
-            r["first"],
         ))
     pages = [items[i:i + page_size] for i in range(0, len(items), page_size)]
     for index, page in enumerate(pages, 1):
@@ -1337,10 +1360,14 @@ def build_catalog(prs: Presentation) -> None:
             f"Все {len(items)} объектов реестра в порядке очереди. "
             f"Лист {index} из {len(pages)}",
         )
-        rows = [("№", "Код", "Объект", "Волна", "Балл", "Что делаем")] + page
+        rows = [(
+            "№", "Объект", "Бизнес-владелец", "Процесс", "Подпроцесс", "Этап",
+            "Что делаем", "Волна", "Балл",
+        )] + page
         table_grid(
             slide, MARGIN_L, CONTENT_TOP + 20000, CONTENT_W,
-            [5, 9, 30, 6, 6, 44], rows, row_h=300000, size=8,
+            [3, 17, 20, 7, 9, 7, 26, 6, 5], rows,
+            row_h=370000, size=7, margin_x=45000, margin_y=12000,
         )
 
 

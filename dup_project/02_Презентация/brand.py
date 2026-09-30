@@ -246,7 +246,10 @@ def divider(slide, x, y, w, *, color=MIST, thickness=1):
     return line
 
 
-def table_grid(slide, x, y, w, col_widths, rows, *, header=True, row_h=300000, size=9, zebra=True):
+def table_grid(
+    slide, x, y, w, col_widths, rows, *, header=True, row_h=300000, size=9, zebra=True,
+    margin_x=80000, margin_y=20000, line_spacing=1.05,
+):
     """Лёгкая таблица из прямоугольников — полный контроль над стилем."""
     total = sum(col_widths)
     cols = [int(w * c / total) for c in col_widths]
@@ -263,8 +266,8 @@ def table_grid(slide, x, y, w, col_widths, rows, *, header=True, row_h=300000, s
             box = rect(slide, cur_x, cur_y, cols[c_i], row_h, fill=fill, shape=MSO_SHAPE.RECTANGLE)
             tf = box.text_frame
             tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-            tf.margin_left = tf.margin_right = Emu(80000)
-            tf.margin_top = tf.margin_bottom = Emu(20000)
+            tf.margin_left = tf.margin_right = Emu(margin_x)
+            tf.margin_top = tf.margin_bottom = Emu(margin_y)
             set_text(
                 tf,
                 str(cell),
@@ -272,7 +275,7 @@ def table_grid(slide, x, y, w, col_widths, rows, *, header=True, row_h=300000, s
                 font=fnt,
                 color=col,
                 align=PP_ALIGN.LEFT,
-                line_spacing=1.05,
+                line_spacing=line_spacing,
             )
             cur_x += cols[c_i]
         cur_y += row_h
