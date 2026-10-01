@@ -190,20 +190,47 @@ SLA = "SLA на стык с ЦО"
 # code: (влияние, время, деньги, риск, лёгкость, волна, тип вмешательства,
 #        первый шаг, предшественники, обоснование, ключи подтверждающих метрик)
 PRIORITY = OrderedDict([
-    ("ДУП.0", (None, None, None, None, None, АГ, АГРЕГАТ,
-               "Отдельных действий не требуется",
-               "—",
-               "Корень дерева процессов: его результат складывается из блоков 1–4. "
-               "Оптимизируется не сам по себе, а через входящие в него объекты, поэтому "
-               "собственного места в очереди не занимает.",
-               ())),
+    ("ГП", (None, None, None, None, None, АГ, АГРЕГАТ,
+            "Отдельных действий не требуется — очередь ведётся по подпроцессу 1.2",
+            "—",
+            "Головной процесс вывода продукта. Оценку и место в очереди получает "
+            "подпроцесс подтверждения готовности и его этап, чтобы одна работа не "
+            "считалась дважды.",
+            ())),
+    ("БЖ", (None, None, None, None, None, АГ, АГРЕГАТ,
+            "Отдельных действий не требуется — очередь ведётся по подпроцессу 1.5",
+            "—",
+            "Головной процесс бюджетирования. Оценку получает формирование ФЭМ и его этапы.",
+            ())),
+    ("ЗК", (None, None, None, None, None, АГ, АГРЕГАТ,
+            "Отдельных действий не требуется — очередь ведётся по подпроцессу 1.7",
+            "—",
+            "Головной процесс закупок. Оценку получает инициация и контроль закупок и его этапы.",
+            ())),
+    ("ПЛ", (None, None, None, None, None, АГ, АГРЕГАТ,
+            "Отдельных действий не требуется — очередь ведётся по подпроцессу 1.9",
+            "—",
+            "Головной процесс платежей. Оценку получает реестр платежей и его этапы.",
+            ())),
+    ("ПР", (None, None, None, None, None, АГ, АГРЕГАТ,
+            "Отдельных действий не требуется — очередь ведётся по подпроцессам 2.3 и 2.6",
+            "—",
+            "Головной процесс прогноза и контроля бюджета. Оценку получают прогноз "
+            "поступлений и вынесение нехватки бюджета на ОСУ.",
+            ())),
+    ("КН", (None, None, None, None, None, АГ, АГРЕГАТ,
+            "Отдельных действий не требуется — очередь ведётся по подпроцессу 2.4",
+            "—",
+            "Головной процесс продления контракта. Оценку получает инициация продления.",
+            ())),
 
     # ---------------- БЛОК 1 ----------------
     ("1", (4, 2, 2, 4, 4, В1, ПАСПОРТ,
            "Утвердить паспорт процесса реализации: границы, вход, выход и три показателя",
            "2.0",
            "Владелец закреплён — зам. по строительству и реализации, и это решение "
-           "действует. Но девять подпроцессов блока не имеют общего описания: где фаза "
+           "действует. Но приём пакета, назначение куратора и проектная документация "
+           "не имеют общего описания: где фаза "
            "начинается, чем заканчивается и по каким показателям оценивается. Глава 8 и "
            "Приложение №2 Методики делают паспорт обязательным атрибутом процесса. Он "
            "пишется в волне запуска вместе с быстрыми победами и занимает место по баллу: "
@@ -853,6 +880,7 @@ def objects():
             "code": code,
             "level": level,
             "name": name,
+            "parent": p[3],
             "owner": short_owner(owner_dept),
             "role": simple_role(code, dup_role, owner_dept),
             "scores": scores,
@@ -879,6 +907,63 @@ def objects():
     for i, row in enumerate(queue, 1):
         row["rank"] = i if row["wave"] != АГ else None
     return queue
+
+
+# Порядок головных процессов на листе «Приоритеты»: фаза проекта, затем функции,
+# которые раньше были ошибочно вложены в эту фазу.
+TREE_ORDER = [
+    "1", "ГП", "БЖ", "ЗК", "ПЛ",
+    "2", "ПР", "КН",
+    "3", "Б.5",
+    "4",
+    "Б.2", "Б.7", "Б.8", "Б.9", "Б.10",
+]
+
+
+def tree_rows(rows):
+    """Раскладывает объекты деревом: процесс, его подпроцессы, их этапы."""
+    by_code = {r["code"]: r for r in rows}
+    source_index = {p[0]: i for i, p in enumerate(PROCESSES)}
+    children = {}
+    for r in sorted(rows, key=lambda item: source_index[item["code"]]):
+        children.setdefault(r["parent"], []).append(r)
+
+    def walk(code):
+        node = by_code[code]
+        ordered = [node]
+        for child in children.get(code, []):
+            ordered.extend(walk(child["code"]))
+        return ordered
+
+    roots = [code for code in TREE_ORDER if code in by_code]
+    roots += [r["code"] for r in rows if r["parent"] == "" and r["code"] not in roots]
+    ordered = []
+    for code in roots:
+        ordered.extend(walk(code))
+    if len(ordered) != len(rows):
+        missing = sorted({r["code"] for r in rows} - {r["code"] for r in ordered})
+        raise SystemExit(f"Дерево процессов собрано не полностью: {missing}")
+    return ordered
+
+
+def place_names(row, by_code):
+    """Имена процесса, подпроцесса и этапа для одной строки."""
+    chain = []
+    cur = row
+    seen = set()
+    while cur and cur["code"] not in seen:
+        seen.add(cur["code"])
+        chain.append(cur)
+        cur = by_code.get(cur["parent"])
+    chain.reverse()
+    process = chain[0]["name"]
+    if row["level"] == "Процесс":
+        return process, "—", "—"
+    if row["level"] == "Подпроцесс":
+        return process, row["name"], "—"
+    if len(chain) >= 3:
+        return process, chain[-2]["name"], row["name"]
+    return process, "—", row["name"]
 
 
 # --- Построение книги --------------------------------------------------------
@@ -1004,7 +1089,8 @@ def build_guide(wb, rows):
         (wave, counts.get(wave, 0), phase, goal)
         for wave, phase, goal, _, _, _ in WAVES
     ]
-    wave_rows.append((АГ, counts.get(АГ, 0), "—", "Корень дерева процессов"))
+    wave_rows.append((АГ, counts.get(АГ, 0), "—",
+                      "Головной процесс без отдельной оценки: работа идёт по его подпроцессам"))
     end = write_spanned_table(ws, ["Волна", "Объектов", "Фаза дорожной карты", "Цель волны"],
                               wave_rows, [(1, 1), (2, 2), (3, 3), (4, 5)], start=end + 3)
     for i, row in enumerate(wave_rows):
@@ -1016,10 +1102,10 @@ def build_guide(wb, rows):
     note_row = end + 2
     ws.cell(row=note_row, column=1, value="Как пользоваться файлом").font = TITLE_FONT
     notes = [
-        "«Приоритеты» — основной лист. Строки уже стоят в порядке работ: сначала волна. "
-        "Внутри волны 1 — строго по убыванию балла. В волнах 2 и 3 — по убыванию балла, "
-        "но не раньше предшественников. Сортировка по колонке «Итоговый балл» даёт "
-        "чистый рейтинг ценности без учёта волны.",
+        "«Приоритеты» — основной лист. Строки разложены деревом: головной процесс, "
+        "под ним его подпроцессы и этапы. Номер в очереди — это порядок работ: "
+        "волна 1 строго по убыванию балла, волны 2 и 3 — по баллу, но не раньше "
+        "предшественников. Сортировка по колонке «Итоговый балл» даёт рейтинг ценности.",
         "«Порядок работ» — что делает каждая волна, с чего она начинается и по какому "
         "критерию считается завершённой.",
         f"«{STEPS_SHEET}» — конкретная программа старта: действие, объекты, ответственный, "
@@ -1043,31 +1129,35 @@ def build_guide(wb, rows):
 def build_priority(wb, rows):
     ws = wb.create_sheet("Приоритеты")
     headers = (
-        ["№ в очереди", "Код", "Уровень", "Наименование объекта", "Бизнес-владелец", "Роль ДУП"]
+        ["№ в очереди", "Код", "Уровень", "Процесс", "Подпроцесс", "Этап",
+         "Бизнес-владелец", "Роль ДУП"]
         + CRIT_KEYS
         + ["Итоговый балл", "Волна", "Тип вмешательства", "Первый шаг", "Предшественники",
            "Обоснование — почему берёмся за объект именно здесь", "Чем подтвердим эффект"]
     )
-    widths = ([8, 8, 11, 32, 20, 14] + [11] * 5
+    widths = ([8, 8, 12, 34, 42, 42, 22, 14] + [11] * 5
               + [10, 22, 22, 40, 16, 70, 28])
-    table = [
-        (
-            r["rank"] or "—", r["code"], r["level"], r["name"], r["owner"], r["role"],
+    laid_out = tree_rows(rows)
+    by_code = {r["code"]: r for r in laid_out}
+    table = []
+    for r in laid_out:
+        process, subprocess, stage = place_names(r, by_code)
+        table.append((
+            r["rank"] or "—", r["code"], r["level"], process, subprocess, stage,
+            r["owner"], r["role"],
             *[s if s is not None else "—" for s in r["scores"]],
             r["total"] if r["total"] is not None else "—",
             r["wave"], r["kind"], r["first"], r["pred"], r["why"], r["proof"],
-        )
-        for r in rows
-    ]
+        ))
     write_table(ws, headers, table, start=1, widths=widths)
 
     ws.row_dimensions[1].height = 46
-    score_first = 7
-    for i, r in enumerate(rows):
+    score_first = 9
+    for i, r in enumerate(laid_out):
         row = i + 2
         ws.cell(row=row, column=1).alignment = CENTER_TOP
-        ws.cell(row=row, column=6).fill = ROLE_FILLS[r["role"]]
-        ws.cell(row=row, column=6).font = Font(bold=True, size=10)
+        ws.cell(row=row, column=8).fill = ROLE_FILLS[r["role"]]
+        ws.cell(row=row, column=8).font = Font(bold=True, size=10)
         for c, score in enumerate(r["scores"], score_first):
             cell = ws.cell(row=row, column=c)
             cell.alignment = CENTER_TOP
@@ -1078,11 +1168,12 @@ def build_priority(wb, rows):
         total_cell.font = Font(bold=True, size=10)
         ws.cell(row=row, column=score_first + 6).fill = WAVE_FILLS[r["wave"]]
         if r["level"] == "Процесс":
-            for c in (2, 4):
-                ws.cell(row=row, column=c).fill = LEVEL_FILL
+            ws.cell(row=row, column=4).fill = LEVEL_FILL
             ws.cell(row=row, column=4).font = Font(bold=True, size=10)
+        elif r["level"] == "Подпроцесс":
+            ws.cell(row=row, column=5).font = Font(bold=True, size=10)
 
-    ws.freeze_panes = "E2"
+    ws.freeze_panes = "G2"
     ws.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{len(rows) + 1}"
     # Восемнадцать колонок на одну страницу по ширине дают нечитаемый кегль.
     setup_print(ws, pages_wide=2)
