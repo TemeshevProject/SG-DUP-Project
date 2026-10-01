@@ -32,6 +32,7 @@ from brand import (
     BLUE,
     BLUE_LIGHT,
     CARD_BG,
+    CONTENT_BOTTOM,
     CONTENT_TOP,
     CONTENT_W,
     DARK,
@@ -857,9 +858,9 @@ def build_headline(prs: Presentation) -> None:
     )
 
     stats = [
-        (str(len(ROWS)),
-         f"{plural(len(ROWS), 'объект', 'объекта', 'объектов')} реестра оценены "
-         "и поставлены в очередь", GREEN),
+        (str(len(SCORED)),
+         f"{plural(len(SCORED), 'объект', 'объекта', 'объектов')} с баллом "
+         "поставлены в очередь", GREEN),
         (str(BY_WAVE[P.В1]),
          f"{plural(BY_WAVE[P.В1], 'объект', 'объекта', 'объектов')} волны 1: паспорта, "
          "замер и быстрые победы внутри ДУП", GREEN),
@@ -1247,59 +1248,89 @@ def level_counter():
     return Counter(p[1] for p in P.PROCESSES)
 
 
+def processes_by_role():
+    """Имена процессов верхнего уровня в порядке дерева, сгруппированные по роли ДУП."""
+    order = {code: i for i, code in enumerate(P.TREE_ORDER)}
+    groups = {ВЛАДЕЛЕЦ: [], УЧАСТНИК: [], КЛИЕНТ: []}
+    for p in P.PROCESSES:
+        if p[1] != "Процесс":
+            continue
+        role = simple_role(p[0], p[8], p[6])
+        groups[role].append((order.get(p[0], 99), p[2]))
+    return {role: [name for _, name in sorted(items)] for role, items in groups.items()}
+
+
 def build_perimeter(prs: Presentation) -> None:
-    """Сколько объектов в периметре и в какой роли в них стоит ДУП."""
+    """Периметр — процессы, а не строки реестра. Чужие процессы показаны с ролью ДУП."""
     slide = new_slide(prs)
     title(slide, "Периметр проекта",
-          "Все объекты, которыми система управления будет заниматься")
+          "Управляем процессами. Строки реестра — это их подпроцессы и этапы")
 
     levels = level_counter()
     roles = role_counter()
-    stats = [
-        (str(len(P.PROCESSES)), "объектов в реестре", BLUE),
-        (str(levels["Процесс"]), "процессов, из них 5 — дерево ДУП и 6 — сквозные стыки", GREEN),
-        (str(levels["Подпроцесс"]), "подпроцессов", BLUE),
-        (str(levels["Этап"]), "этапов", GREEN),
-    ]
+    groups = processes_by_role()
+    owned = groups[ВЛАДЕЛЕЦ]
+    participants = groups[УЧАСТНИК]
+    clients = groups[КЛИЕНТ]
+    n_rest = len(participants) + len(clients)
+
     gap = 140000
-    col_w = (CONTENT_W - 3 * gap) // 4
-    y = CONTENT_TOP + 60000
-    card_h = 1280000
+    col_w = (CONTENT_W - 2 * gap) // 3
+    y = CONTENT_TOP + 10000
+    card_h = 640000
+    stats = [
+        (str(levels["Процесс"]), "процессов в периметре", GREEN),
+        (str(len(owned)), "ДУП — владелец результата", GREEN),
+        (str(n_rest), "ДУП — участник или клиент", BLUE),
+    ]
     for i, (number, caption, accent) in enumerate(stats):
         x = MARGIN_L + i * (col_w + gap)
         rect(slide, x, y, col_w, card_h, fill=CARD_BG)
-        textbox(slide, x + 120000, y + 140000, col_w - 240000, 520000, number,
-                size=36, font=FONT_BOLD, color=accent, line_spacing=1.0)
-        textbox(slide, x + 120000, y + 700000, col_w - 240000, 480000, caption,
-                size=11, color=GRAY, line_spacing=1.15)
+        textbox(slide, x + 120000, y + 40000, col_w - 240000, 360000, number,
+                size=28, font=FONT_BOLD, color=accent, line_spacing=1.0)
+        textbox(slide, x + 120000, y + 400000, col_w - 240000, 200000, caption,
+                size=12, font=FONT_MED, color=DARK, line_spacing=1.05)
 
-    textbox(slide, MARGIN_L, y + card_h + 160000, CONTENT_W, 240000,
-            "Роль ДУП в этих объектах", size=14, font=FONT_BOLD, color=DARK)
+    panel_y = y + card_h + 80000
+    panel_h = CONTENT_BOTTOM - panel_y - 480000
+    left_w = 2680000
+    left = rect(slide, MARGIN_L, panel_y, left_w, panel_h, fill=CARD_BG)
+    rect(slide, MARGIN_L, panel_y, left_w, 70000, fill=GREEN, shape=MSO_SHAPE.RECTANGLE)
+    textbox(slide, MARGIN_L + 120000, panel_y + 90000, left_w - 240000, 220000,
+            "Владелец", size=13, font=FONT_BOLD, color=ink(GREEN))
+    name_y = panel_y + 320000
+    name_h = (panel_h - 360000) // max(len(owned), 1)
+    for i, name in enumerate(owned):
+        textbox(slide, MARGIN_L + 140000, name_y + i * name_h, left_w - 280000, name_h - 40000,
+                name, size=11, color=DARK, line_spacing=1.0)
 
-    role_cards = [
-        (roles[ВЛАДЕЛЕЦ], "владелец", "Результат на ДУП", GREEN),
-        (roles[УЧАСТНИК], "участник", "Шаг в чужом процессе", BLUE),
-        (roles[КЛИЕНТ], "клиент", "Принимает результат", YELLOW),
-        (roles[НЕ_ОПРЕДЕЛЁН], "не определён", "Таких объектов нет", GRAY),
+    right_x = MARGIN_L + left_w + gap
+    right_w = CONTENT_W - left_w - gap
+    inner_gap = 100000
+    inner_w = (right_w - inner_gap) // 2
+    columns = [
+        (participants, "Участник", BLUE),
+        (clients, "Клиент", YELLOW),
     ]
-    role_y = y + card_h + 420000
-    role_h = 980000
-    for i, (count, name, note, accent) in enumerate(role_cards):
-        x = MARGIN_L + i * (col_w + gap)
-        rect(slide, x, role_y, col_w, role_h, fill=CARD_BG)
-        rect(slide, x, role_y, col_w, 70000, fill=accent, shape=MSO_SHAPE.RECTANGLE)
-        textbox(slide, x + 120000, role_y + 120000, col_w - 240000, 400000,
-                str(count), size=32, font=FONT_BOLD, color=ink(accent))
-        textbox(slide, x + 120000, role_y + 520000, col_w - 240000, 200000,
-                name, size=13, font=FONT_BOLD, color=DARK)
-        textbox(slide, x + 120000, role_y + 720000, col_w - 240000, 200000,
-                note, size=10, color=GRAY, line_spacing=1.05)
+    for col_i, (names, label, accent) in enumerate(columns):
+        x = right_x + col_i * (inner_w + inner_gap)
+        rect(slide, x, panel_y, inner_w, panel_h, fill=CARD_BG)
+        rect(slide, x, panel_y, inner_w, 70000, fill=accent, shape=MSO_SHAPE.RECTANGLE)
+        textbox(slide, x + 100000, panel_y + 90000, inner_w - 200000, 220000,
+                label, size=13, font=FONT_BOLD, color=ink(accent))
+        row_h = (panel_h - 360000) // max(len(names), 1)
+        for i, name in enumerate(names):
+            textbox(slide, x + 100000, name_y + i * row_h, inner_w - 200000, row_h - 36000,
+                    name, size=10, color=DARK, line_spacing=1.0)
 
     textbox(
-        slide, MARGIN_L, role_y + role_h + 120000, CONTENT_W, 240000,
-        "Головной процесс без собственной оценки в очередь не ставится: "
-        "работа идёт по его подпроцессам и этапам.",
-        size=10, color=STEEL,
+        slide, MARGIN_L, CONTENT_BOTTOM - 400000, CONTENT_W, 360000,
+        f"В реестре {objects_word(len(P.PROCESSES))}: "
+        f"{levels['Подпроцесс']} {plural(levels['Подпроцесс'], 'подпроцесс', 'подпроцесса', 'подпроцессов')} "
+        f"и {levels['Этап']} {plural(levels['Этап'], 'этап', 'этапа', 'этапов')}. "
+        f"Роль ДУП по этим строкам: {roles[ВЛАДЕЛЕЦ]} — владелец, "
+        f"{roles[УЧАСТНИК]} — участник, {roles[КЛИЕНТ]} — клиент.",
+        size=11, color=GRAY, line_spacing=1.15,
     )
 
 
@@ -1339,7 +1370,7 @@ def build_catalog(prs: Presentation) -> None:
     """
     page_size = 8
     items = []
-    for r in ROWS:
+    for r in P.tree_rows(ROWS):
         items.append((
             "—" if r["rank"] is None else str(r["rank"]),
             r["name"],
@@ -1357,7 +1388,7 @@ def build_catalog(prs: Presentation) -> None:
         title(
             slide,
             "Перечень процессов",
-            f"Все {len(items)} объектов реестра в порядке очереди. "
+            f"Все {len(items)} объектов реестра по процессам. "
             f"Лист {index} из {len(pages)}",
         )
         rows = [(
