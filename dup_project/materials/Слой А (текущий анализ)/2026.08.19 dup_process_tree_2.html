@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ДУП — дерево процессов (рабочая версия)</title>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --page-plane:     #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --border:         rgba(11,11,11,0.10);
+    --p1: #2a78d6;   /* Реализация — blue */
+    --p2: #1baf7a;   /* Сопровождение — aqua */
+    --p3: #4a3aa7;   /* Филиальная сеть — violet */
+    --p4: #eb6834;   /* Методология / ПМО — orange */
+    --ext: #eda100;  /* внешний интерфейс — yellow/amber */
+    --status-critical:#d03b3b;
+    --status-gap:#8a5a00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --page-plane:     #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:       #2c2c2a;
+      --border:         rgba(255,255,255,0.10);
+      --p1: #3987e5; --p2: #199e70; --p3: #9085e9; --p4: #d95926; --ext: #c98500;
+      --status-critical:#e66767;
+      --status-gap:#ffd479;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background: var(--page-plane); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text-primary); }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 40px 28px 70px; }
+
+  header.title-block { margin-bottom: 22px; }
+  header.title-block .kicker { font-size: 13px; font-weight: 700; letter-spacing:.04em; text-transform: uppercase; color: var(--p1); margin-bottom: 6px; }
+  header.title-block h1 { font-size: 27px; margin: 0 0 8px; letter-spacing: -0.01em; }
+  header.title-block p.sub { font-size: 14.5px; color: var(--text-secondary); margin:0; max-width: 900px; line-height: 1.55; }
+  .status-pill {
+    display:inline-flex; align-items:center; gap:6px; margin-top:12px; font-size:12px; font-weight:700;
+    color:#8a5a00; background:#fff4d9; border:1px solid #f0d089; padding:4px 10px; border-radius:20px;
+  }
+  @media (prefers-color-scheme: dark) { .status-pill{ color:#ffd479; background:#332a12; border-color:#5a4416; } }
+
+  .legend-bar { display:flex; flex-wrap:wrap; gap:10px 22px; background:var(--surface-1); border:1px solid var(--border);
+    border-radius:10px; padding:14px 18px; margin:20px 0 30px; font-size:13px; color:var(--text-secondary); }
+  .legend-bar .item { display:flex; align-items:center; gap:7px; }
+  .swatch { width:12px; height:12px; border-radius:3px; flex:none; }
+  .swatch.dashed { background:none; border:2px dashed var(--ext); width:10px; height:10px; }
+
+  /* root node */
+  .root-node {
+    display:flex; align-items:center; gap:14px; background: var(--text-primary); color: var(--surface-1);
+    border-radius: 12px; padding: 16px 22px; margin-bottom: 8px; max-width: 620px; margin-left:auto; margin-right:auto;
+  }
+  .root-node .icon { width:38px; height:38px; border-radius:50%; background:var(--surface-1); color:var(--text-primary);
+    display:flex; align-items:center; justify-content:center; font-weight:800; font-size:16px; flex:none;}
+  .root-node .txt b { display:block; font-size:16px; }
+  .root-node .txt span { font-size:12px; opacity:.75; }
+  .trunk { width:2px; height:26px; background: var(--gridline); margin: 0 auto; }
+
+  /* ribbons */
+  .curator-ribbon {
+    max-width: 1040px; margin: 4px auto 12px; background: var(--surface-1); border: 1.5px dashed var(--p4);
+    border-radius: 10px; padding: 10px 16px; font-size: 12.5px; color: var(--text-secondary); text-align:center;
+  }
+  .curator-ribbon b { color: var(--text-primary); }
+  .curator-ribbon.handoff { border-color: var(--status-critical); margin-bottom: 22px; }
+
+  /* columns */
+  .cols { display:grid; grid-template-columns: repeat(4, 1fr); gap: 18px; align-items:start; }
+  @media (max-width: 1200px) { .cols { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+  .col-head .owner { font-size: 11px; opacity:.9; margin-top: 3px; font-style: italic; }
+  .col-head .owner-current { font-size: 10.5px; opacity:.85; margin-top: 4px; padding-top: 4px; border-top: 1px dashed rgba(255,255,255,0.4); }
+
+  .col-head { border-radius: 10px 10px 0 0; padding: 12px 16px; color:#fff; }
+  .col-head .n { font-size:11px; opacity:.85; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+  .col-head h2 { font-size: 16px; margin: 2px 0 0; }
+  .col-body { background: var(--surface-1); border: 1px solid var(--border); border-top:none; border-radius: 0 0 10px 10px;
+    padding: 14px; display:flex; flex-direction:column; gap:10px; min-height: 40px; }
+
+  .sub-card { border: 1px solid var(--border); border-left: 4px solid var(--lane); border-radius: 8px; padding: 10px 12px; background: var(--page-plane); }
+  .sub-card .idx { font-size: 11px; font-weight: 800; color: var(--lane); }
+  .sub-card .title { font-size: 13.5px; font-weight: 600; margin: 2px 0 3px; }
+  .sub-card .desc { font-size: 12px; color: var(--text-secondary); line-height:1.45; margin:0 0 6px; }
+  .chips { display:flex; flex-wrap:wrap; gap:5px; }
+  .chip {
+    font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 20px;
+    border: 1.5px dashed var(--ext); color: var(--ext); background: transparent;
+  }
+  .chip.problem { border-style: solid; border-color: var(--status-critical); color: var(--status-critical); }
+  .chip.gap { border-style: solid; border-color: var(--status-gap); color: var(--status-gap); background: rgba(138,90,0,0.08); }
+
+  .col-note { font-size: 11.5px; color: var(--text-muted); padding: 4px 4px 0; font-style: italic; }
+
+  section.block { margin-top: 44px; }
+  h2.block-title { font-size: 17px; margin:0 0 4px; padding-bottom: 9px; border-bottom: 2px solid var(--text-primary); }
+  p.block-sub { font-size: 13px; color: var(--text-muted); margin: 8px 0 18px; }
+
+  table.ext { width:100%; border-collapse: collapse; font-size: 13px; background: var(--surface-1);
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  table.ext th { text-align:left; background: var(--text-primary); color: var(--surface-1); padding: 10px 12px;
+    font-size: 12px; text-transform: uppercase; letter-spacing:.03em; font-weight:700; }
+  table.ext td { padding: 10px 12px; border-top: 1px solid var(--gridline); color: var(--text-secondary); vertical-align:top; }
+  table.ext tr:nth-child(even) td { background: var(--page-plane); }
+  table.ext td.actor { color: var(--text-primary); font-weight:700; white-space:nowrap; }
+
+  footer.foot { margin-top: 40px; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--gridline); padding-top: 16px; }
+
+  /* process strips — chужие процессы с участием ДУП */
+  .strips { display:flex; flex-direction:column; gap:14px; }
+  .strip-card { border:1px solid var(--border); background:var(--surface-1); border-radius:10px; padding:14px 16px; }
+  .strip-card .proc-head { display:flex; flex-wrap:wrap; align-items:baseline; gap:8px; margin-bottom:10px; }
+  .strip-card .proc-title { font-size:14px; font-weight:700; }
+  .strip-card .proc-owner { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em;
+    color:var(--text-muted); background:var(--page-plane); border:1px solid var(--border); border-radius:20px; padding:2px 10px; }
+  .strip-track { display:flex; align-items:stretch; gap:4px; }
+  .strip-stage { flex:1; border-radius:8px; padding:9px 10px; font-size:11.5px; line-height:1.35; text-align:center;
+    background: var(--gridline); color: var(--text-secondary); position:relative; }
+  .strip-stage.dup { background: var(--p1); color:#fff; font-weight:600; }
+  .strip-stage .who { display:block; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em;
+    opacity:.75; margin-bottom:3px; }
+  .strip-arrow { display:flex; align-items:center; color: var(--text-muted); font-size:14px; flex:none; padding:0 1px; }
+  .strip-note { font-size:11.5px; color:var(--text-muted); margin-top:9px; font-style:italic; }
+</style>
+</head>
+<body>
+<div class="viz-root">
+<div class="wrap">
+
+  <header class="title-block">
+    <div class="kicker">Департамент управления проектами · ДУП</div>
+    <h1>Дерево процессов — рабочая версия</h1>
+    <p class="sub">Раздел А показывает только процессы, которыми ДУП реально владеет end-to-end (несёт ответственность за результат). Раздел Б ниже — наоборот: процессы, которыми владеют другие подразделения целиком, а ДУП — участник одного или нескольких этапов. Версия 4 — сверена с четырьмя должностными инструкциями ДУП и с кадровой/компетентностной матрицей департамента; полная разбивка ответственности — в файле «ДУП_RACI_матрица.xlsx».</p>
+    <span class="status-pill">● Версия 4 — блоки 1 и 2 показывают предложенную структуру, сегодня это одна роль; раздел Б (чужие процессы) — облегчённая версия до интервью с Финблоком/ДРБ/Юр блоком</span>
+  </header>
+
+  <div class="legend-bar">
+    <div class="item"><span class="swatch" style="background:var(--p1)"></span> 1. Реализация — влад. Зам.директора (строительство)</div>
+    <div class="item"><span class="swatch" style="background:var(--p2)"></span> 2. Сопровождение — влад. Зам.директора (операционка)</div>
+    <div class="item"><span class="swatch" style="background:var(--p3)"></span> 3. Филиальная сеть</div>
+    <div class="item"><span class="swatch" style="background:var(--p4)"></span> 4. Методология / ПМО — влад. Гл. менеджер проектов</div>
+    <div class="item"><span class="swatch dashed"></span> Точка взаимодействия с чужим процессом</div>
+    <div class="item"><span class="chip problem" style="padding:1px 7px;">№</span> Узкое место из отчёта по интервью</div>
+    <div class="item"><span class="chip gap" style="padding:1px 7px;">ДИ</span> Находка из сверки с должностными инструкциями</div>
+  </div>
+
+  <h2 class="block-title" style="margin-top:0;">А. Процессы, которыми ДУП владеет end-to-end</h2>
+
+  <div class="root-node">
+    <div class="icon">ДУП</div>
+    <div class="txt"><b>Управление проектами</b><span>Реализация и сопровождение доходных проектов компании (ГЧП / ГЗ)</span></div>
+  </div>
+  <div class="trunk"></div>
+
+  <div class="curator-ribbon handoff">
+    <b>⚠ Блоки 1 и 2 сегодня — одна роль, не две</b> — по кадровой матрице департамента функционал обоих блоков (и «строительство новых проектов», и «контроль и сопровождение текущих проектов», плюс методология и управление командой) сейчас ведёт один человек — Зам.директора Департамента (Власов Д.О.). Разделение на «Зам. по строительству и реализации» / «Зам. по операционной деятельности», показанное ниже, — предложенная реструктуризация из новой штатки, ещё не внедрённая. Момент/чек-лист передачи между будущими блоками 1 и 2 нигде не формализован — кандидат в новое узкое место после разделения.
+  </div>
+  <div class="curator-ribbon">
+    <b>Сквозная роль: Главный менеджер проектов (блок 4, ПМО)</b> — по должностным инструкциям репортит напрямую директору ДУП, не подчинён ни одному из замов. Методология, шаблоны, контроль качества данных и портфельная отчётность — сквозные для блоков 1 и 2. В кадровой матрице отдельной такой позиции не найдено — похоже, что это новая роль, а часть её функционала (методология) сегодня числится за Директором ДУП (Аккушимов Г.В.) — риск дублирования на старте.
+  </div>
+
+  <div class="cols">
+
+    <!-- COLUMN 1 -->
+    <div>
+      <div class="col-head" style="background:var(--p1)">
+        <div class="n">Процесс верхнего уровня 1</div>
+        <h2>Реализация проекта</h2>
+        <div class="owner">Владелец (A), предложено: Зам. директора по строительству и реализации проектов</div>
+        <div class="owner-current">Сейчас (кадровая матрица): Зам.директора Департамента — Власов Д.О., совмещает с блоком 2</div>
+      </div>
+      <div class="col-body">
+        <div class="sub-card" style="--lane:var(--p1)">
+          <div class="idx">1.1</div>
+          <div class="title">Приём и валидация пакета документов</div>
+          <div class="desc">Карточка проекта, комплект документов от ДРБ — точка входа в процесс.</div>
+          <div class="chips"><span class="chip">← ДРБ</span><span class="chip problem">1</span></div>
+        </div>
+        <div class="sub-card" style="--lane:var(--p1)">
+          <div class="idx">1.2</div>
+          <div class="title">Подтверждение готовности продукта</div>
+          <div class="desc">Формальная проверка, что продукт прошёл пилот/тест перед запуском в реализацию — сейчас не формализовано.</div>
+          <div class="chips"><span class="chip problem">2</span><span class="chip problem">3</span></div>
+        </div>
+        <div class="sub-card" style="--lane:var(--p1)">
+          <div class="idx">1.3</div>
+          <div class="title">Назначение ответственного</div>
+          <div class="desc">Определение филиала/куратора; если филиала нет — инициирование 3.2.</div>
+        </div>
+        <div class="sub-card" style="--lane:var(--p1)">
+          <div class="idx">1.4</div>
+          <div class="title">Разработка проектной документации</div>
+          <div class="desc">Устав, план — совместно с филиалом.</div>
+        </div>
+        <div class="sub-card" style="--lane:var(--p1)">
+          <div class="idx">1.5</div>
+          <div class="title">Формирование и согласование бюджета (ФЭМ)</div>
+          <div class="desc">ДУП формирует финансово-экономическую модель и передаёт на согласование.</div>
+          <div class="chips"><span class="chip">↔ Финблок</span><span class="chip problem">11</span></div>
+        </div>
+        <div class="sub-card" style="--lane:var(--p1)">
+          <div class="idx">1.6</div>
+          <div class="title">Оформление приказа на реализацию</div>
+          <div class="desc">Сведение документов в единый приказ.</div>
+        </div>
+        <div class="sub-card" style="--lane:var(--p1)">
+          <div class="idx">1.7</div>
+          <div class="title">Инициация и контроль закупок</div>
+          <div class="desc">Запуск заявок; выше порога — полная процедура.</div>
+          <div class="chips"><span class="chip">↔ Закупщики</span><span class="chip problem">13</span></div>
+        </div>
+        <div class="sub-card" style="--lane:var(--p1)">
+          <div class="idx">1.8</div>
+          <div class="title">Управление сроками и бюджетом проекта</div>
+          <div class="desc">Регулярные статус-встречи, контроль исполнения на всём цикле.</div>
+          <div class="chips"><span class="chip problem">8</span></div>
+        </div>
+        <div class="sub-card" style="--lane:var(--p1)">
+          <div class="idx">1.9</div>
+          <div class="title">Формирование реестра платежей и приоритизация</div>
+          <div class="desc">Агрегация данных филиала, приоритизация, передача решения в Финблок.</div>
+          <div class="chips"><span class="chip">→ Финблок</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COLUMN 2 -->
+    <div>
+      <div class="col-head" style="background:var(--p2)">
+        <div class="n">Процесс верхнего уровня 2</div>
+        <h2>Постпроектное сопровождение</h2>
+        <div class="owner">Владелец (A), предложено: Зам. директора по операционной деятельности проектов</div>
+        <div class="owner-current">Сейчас (кадровая матрица): Зам.директора Департамента — Власов Д.О., совмещает с блоком 1</div>
+      </div>
+      <div class="col-body">
+        <div class="sub-card" style="--lane:var(--p2)">
+          <div class="idx">2.1</div>
+          <div class="title">Организация поверки оборудования</div>
+          <div class="desc">Инициируется ДУП, выполняется лабораторией по действующей методике.</div>
+          <div class="chips"><span class="chip">↔ Лаборатория</span><span class="chip problem">10</span></div>
+        </div>
+        <div class="sub-card" style="--lane:var(--p2)">
+          <div class="idx">2.2</div>
+          <div class="title">Сопровождение канала связи</div>
+          <div class="desc">Контроль работоспособности канала связи объекта.</div>
+        </div>
+        <div class="sub-card" style="--lane:var(--p2)">
+          <div class="idx">2.3</div>
+          <div class="title">Прогноз поступлений/расходов и контроль бюджета</div>
+          <div class="desc">ДУП поставляет данные и подтверждения; решение и планирование — на стороне Финблока.</div>
+          <div class="chips"><span class="chip">↔ Финблок</span><span class="chip problem">6</span><span class="chip problem">7</span></div>
+        </div>
+        <div class="sub-card" style="--lane:var(--p2)">
+          <div class="idx">2.4</div>
+          <div class="title">Инициация продления / модернизации контракта</div>
+          <div class="desc">При окончании срока — сбор данных, коммерческое предложение через ДРБ.</div>
+          <div class="chips"><span class="chip">→ ДРБ</span></div>
+        </div>
+        <div class="sub-card" style="--lane:var(--p2)">
+          <div class="idx">2.5</div>
+          <div class="title">Обработка запросов на перенос оборудования</div>
+          <div class="desc">Взаимодействие с филиалом, госпартнёром, оператором связи.</div>
+          <div class="chips"><span class="chip">← Госпартнёр</span></div>
+        </div>
+        <div class="sub-card" style="--lane:var(--p2)">
+          <div class="idx">2.6</div>
+          <div class="title">Выявление нехватки бюджета проекта</div>
+          <div class="desc">Вынесение вопроса на утверждающий орган («ОСУ») при перерасходе.</div>
+          <div class="chips"><span class="chip problem">12</span></div>
+        </div>
+        <div class="sub-card" style="--lane:var(--p2)">
+          <div class="idx">2.7</div>
+          <div class="title">Обратная связь по дефектам компонентов</div>
+          <div class="desc">Передача сведений от эксплуатации владельцу ТЗ/закупок — сейчас не работает регулярно.</div>
+          <div class="chips"><span class="chip problem">9</span></div>
+        </div>
+        <div class="sub-card" style="--lane:var(--p2)">
+          <div class="idx">2.8</div>
+          <div class="title">Отчётность</div>
+          <div class="desc">Ежемесячно — госпартнёру/акимату; на регулярной основе — руководству через портфель проектов.</div>
+          <div class="chips"><span class="chip">→ Госпартнёр</span><span class="chip problem">14</span></div>
+        </div>
+      </div>
+      <div class="col-note">Прогноз поступлений (2.3) сегодня практически неотделим от блока 1 по способу коммуникации — респондент сама называет его «частью сопровождения», хотя по факту он идёт параллельно с реализацией.</div>
+    </div>
+
+    <!-- COLUMN 3 -->
+    <div>
+      <div class="col-head" style="background:var(--p3)">
+        <div class="n">Процесс верхнего уровня 3</div>
+        <h2>Управление филиальной сетью</h2>
+        <div class="owner">Владелец: не закреплён единообразно — см. находки ДИ</div>
+      </div>
+      <div class="col-body">
+        <div class="sub-card" style="--lane:var(--p3)">
+          <div class="idx">3.1</div>
+          <div class="title">Назначение куратора на филиал/проект</div>
+          <div class="desc">Закрепление ответственного менеджера ДУП за регионом. По РACI — утверждает директор ДУП.</div>
+        </div>
+        <div class="sub-card" style="--lane:var(--p3)">
+          <div class="idx">3.2</div>
+          <div class="title">Открытие нового филиала</div>
+          <div class="desc">В интервью — куратор ведёт открытие самостоятельно. Ни в одной из 4 ДИ эта обязанность не встречается. Кадровая матрица подтверждает контрагента — Юр блок (пакет документов, доверенности), — но не называет владельца со стороны ДУП.</div>
+          <div class="chips"><span class="chip">↔ Юр блок</span><span class="chip gap">ДИ: ничья зона</span></div>
+        </div>
+        <div class="sub-card" style="--lane:var(--p3)">
+          <div class="idx">3.3</div>
+          <div class="title">Общие отношения с филиалом</div>
+          <div class="desc">Взаимодействие с директорами/главными инженерами вне рамок конкретного проекта — по ДИ разделено по фазе между двумя замами.</div>
+          <div class="chips"><span class="chip gap">ДИ: нет единого владельца</span></div>
+        </div>
+      </div>
+      <div class="col-note">В интервью «курирование» звучало как единый owned-процесс; по ДИ он оказался размыт между 3.1 (директор), 3.2 (никто) и 3.3 (оба зама).</div>
+    </div>
+
+    <!-- COLUMN 4 -->
+    <div>
+      <div class="col-head" style="background:var(--p4)">
+        <div class="n">Процесс верхнего уровня 4</div>
+        <h2>Методология и контроль качества (ПМО)</h2>
+        <div class="owner">Владелец (A), предложено: Главный менеджер проектов</div>
+        <div class="owner-current">Сейчас (кадровая матрица): часть функционала (методология) заявлена за Директором ДУП — Аккушимовым Г.В.</div>
+      </div>
+      <div class="col-body">
+        <div class="sub-card" style="--lane:var(--p4)">
+          <div class="idx">4.1</div>
+          <div class="title">Методология, шаблоны, реестры ДУП</div>
+          <div class="desc">Разработка и поддержка единых инструментов проектного управления департамента.</div>
+          <div class="chips"><span class="chip gap">Кадровая матрица: дублирует Директора</span></div>
+        </div>
+        <div class="sub-card" style="--lane:var(--p4)">
+          <div class="idx">4.2</div>
+          <div class="title">Контроль качества проектных данных</div>
+          <div class="desc">Проверка полноты и корректности информации по всем проектам обоих блоков.</div>
+        </div>
+        <div class="sub-card" style="--lane:var(--p4)">
+          <div class="idx">4.3</div>
+          <div class="title">Портфельная отчётность руководству</div>
+          <div class="desc">Готовит материалы для директора и Товарищества на уровне всего портфеля проектов.</div>
+          <div class="chips"><span class="chip gap">ДИ: дублирует 1.8 / 2.8</span></div>
+        </div>
+      </div>
+      <div class="col-note">Найден новый блок при сверке с ДИ — не входил в версию 1 дерева. Пункт 4.3 почти дословно повторяется в ДИ обоих замов — стоит развести уровень отчётности (проектный vs портфельный). Пункт 4.1 дублируется с Директором ДУП по кадровой матрице — в ней отдельной позиции «Главный менеджер проектов» нет, похоже, это новая роль реорганизации.</div>
+    </div>
+
+  </div>
+
+  <section class="block">
+    <h2 class="block-title">Внешние интерфейсы (не входят в дерево ДУП)</h2>
+    <p class="block-sub">Процессы, которыми владеют другие подразделения. ДУП в них — поставщик данных / участник, но не бизнес-владелец результата.</p>
+    <table class="ext">
+      <tr><th style="width:150px">Внешний владелец</th><th>Что пересекает границу</th></tr>
+      <tr><td class="actor">ДРБ</td><td>Входящий доходный договор и пакет документов (→ 1.1); исходящий запрос на продление/модернизацию (2.4 →). ДРБ владеет presale и продажей продукта.</td></tr>
+      <tr><td class="actor">Финблок</td><td>Согласование бюджета (1.5), приём реестра платежей (1.9 →), прогноз поступлений/расходов (2.3). Финблок владеет решением по оплате и финансовым планированием — в интервью респондент сама называет это «процессом финансистов».</td></tr>
+      <tr><td class="actor">Госпартнёр</td><td>Источник доходов, инициатор запросов на перенос оборудования (→ 2.5), получатель отчётности (2.8 →), претензий и штрафов.</td></tr>
+      <tr><td class="actor">Лаборатория</td><td>Исполнитель поверки оборудования (2.1) — ДУП инициирует и оплачивает, не выполняет сам.</td></tr>
+      <tr><td class="actor">Закупщики</td><td>Ведут закупочные процедуры выше упрощённого порога (1.7).</td></tr>
+      <tr><td class="actor">Юр блок</td><td>Подготовка и согласование договоров с контрагентами; пакет документов и доверенности на открытие филиала (↔ 3.2). Найден по кадровой матрице — раньше в карте не был явно указан.</td></tr>
+      <tr><td class="actor">СТ (техническая служба)</td><td>Технические карты и требования на стадии планирования перед закупками, первичная калибровка и юстировка оборудования (↔ 1.7).</td></tr>
+      <tr><td class="actor">Зерек / Zerek Road tech</td><td>Техническая спецификация на ИТ-инфраструктуру, монтаж и запуск серверного оборудования в ЦОД (↔ 1.4–1.7).</td></tr>
+      <tr><td class="actor">ДП / Акимат / АРЭК-АЖК / прокуратура</td><td>Внешние госорганы и поставщики: статус проекта и техвопросы (ДП, Акимат), техусловия электропитания (АРЭК/АЖК), взаимодействие по криминогенным районам (прокуратура) — в основном на стороне блока 2.</td></tr>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2 class="block-title">Б. Чужие процессы с участием ДУП (лёгкая версия)</h2>
+    <p class="block-sub">В отличие от дерева выше, здесь показан не тот кусок, который знает ДУП, а процесс целиком — от начала до конца, с указанием, кто им владеет. Серые этапы — зона другого подразделения, деталей его внутренней работы у нас нет. Синий этап — то место, где реально задействован ДУП, и его роль (R — исполняет, C — консультируют/предоставляет данные). Это облегчённая версия: полноценные дорожки с точным составом шагов на стороне Финблока/ДРБ/Юр блока появятся после интервью с этими подразделениями — сейчас состав их этапов дан укрупнённо, по тому, что упомянуто в ДИ и кадровой матрице.</p>
+
+    <div class="strips">
+
+      <div class="strip-card">
+        <div class="proc-head">
+          <span class="proc-title">Согласование бюджета проекта / ФЭМ</span>
+          <span class="proc-owner">Владелец: Финблок</span>
+        </div>
+        <div class="strip-track">
+          <div class="strip-stage dup"><span class="who">ДУП · R</span>Формирование ФЭМ и бюджета по проекту</div>
+          <div class="strip-arrow">›</div>
+          <div class="strip-stage"><span class="who">Финблок</span>Проверка и согласование ФЭМ</div>
+          <div class="strip-arrow">›</div>
+          <div class="strip-stage"><span class="who">Финблок</span>Утверждение бюджета, кредитование при необходимости</div>
+        </div>
+        <div class="strip-note">Подпроцесс 1.5 в дереве ДУП — это только первый этап. По кадровой матрице формулировки на стороне Финблока шире («разработка и согласование бюджета, фин. закрытие, кредитование, разработка ФЭМ») — не исключено, что часть работы по ФЭМ Финблок тоже делает сам; нужно уточнить на интервью, кто фактически готовит документ.</div>
+      </div>
+
+      <div class="strip-card">
+        <div class="proc-head">
+          <span class="proc-title">Финансовое закрытие проекта</span>
+          <span class="proc-owner">Владелец: Финблок</span>
+        </div>
+        <div class="strip-track">
+          <div class="strip-stage dup"><span class="who">ДУП · C</span>Служебная записка о необходимости закрытия</div>
+          <div class="strip-arrow">›</div>
+          <div class="strip-stage"><span class="who">Финблок</span>Сбор актов сверок, уведомления о расторжении договоров</div>
+          <div class="strip-arrow">›</div>
+          <div class="strip-stage"><span class="who">Финблок</span>Формирование бюджета на логистику/демонтаж, закрытие</div>
+        </div>
+        <div class="strip-note">Не входит в дерево ДУП как ветка — раньше был виден только как строка «→ Финблок» у 1.9. По ДИ и кадровой матрице это отдельный процесс с несколькими этапами на стороне Финблока.</div>
+      </div>
+
+      <div class="strip-card">
+        <div class="proc-head">
+          <span class="proc-title">Прогноз поступлений и расходов</span>
+          <span class="proc-owner">Владелец: Финблок</span>
+        </div>
+        <div class="strip-track">
+          <div class="strip-stage dup"><span class="who">ДУП · C</span>Данные и подтверждения по проектам (2.3)</div>
+          <div class="strip-arrow">›</div>
+          <div class="strip-stage"><span class="who">Финблок</span>Планирование и решение по прогнозу</div>
+        </div>
+        <div class="strip-note">Респондент в интервью сама назвала это «процессом финансистов» [00:08:48–00:08:58] — ДУП только поставляет данные.</div>
+      </div>
+
+      <div class="strip-card">
+        <div class="proc-head">
+          <span class="proc-title">Закупки выше упрощённого порога</span>
+          <span class="proc-owner">Владелец: Закупщики</span>
+        </div>
+        <div class="strip-track">
+          <div class="strip-stage dup"><span class="who">ДУП · R</span>Инициация заявки, сбор спецификаций/тех.карт (со СТ)</div>
+          <div class="strip-arrow">›</div>
+          <div class="strip-stage"><span class="who">Закупщики</span>Проведение процедуры закупки</div>
+          <div class="strip-arrow">›</div>
+          <div class="strip-stage dup"><span class="who">ДУП · C</span>Контроль сроков поставки, приёмка (13)</div>
+        </div>
+        <div class="strip-note">Единственный процесс из четырёх, где ДУП участвует на входе и на выходе, а не только на входе — соответствует узкому месту №13 из отчёта по интервью.</div>
+      </div>
+
+      <div class="strip-card">
+        <div class="proc-head">
+          <span class="proc-title">Открытие нового филиала</span>
+          <span class="proc-owner">Владелец: Юр блок (условно — см. находку 3.2)</span>
+        </div>
+        <div class="strip-track">
+          <div class="strip-stage dup"><span class="who">ДУП · ?</span>Инициирование, участие в сборе данных</div>
+          <div class="strip-arrow">›</div>
+          <div class="strip-stage"><span class="who">Юр блок</span>Подготовка пакета документов, доверенностей</div>
+          <div class="strip-arrow">›</div>
+          <div class="strip-stage"><span class="who">?</span>Регистрация / запуск филиала</div>
+        </div>
+        <div class="strip-note">Владелец первого и последнего этапа не определён ни в ДИ, ни в кадровой матрице — та же «ничья» зона, что и подпроцесс 3.2, только теперь видно, что она распространяется на весь процесс, а не только на роль внутри ДУП.</div>
+      </div>
+
+    </div>
+  </section>
+
+  <footer class="foot">
+    Версия 4 — добавлен раздел Б: облегчённые «полоски» чужих процессов (Финблок, Закупщики, Юр блок), где ДУП участвует на одном или нескольких этапах, но не владеет процессом целиком. Раздел А обновлён по итогам сверки с 4 должностными инструкциями ДУП (зам. по строительству и реализации, зам. по операционной деятельности, главный менеджер проектов, младший менеджер проектов) и с кадровой/компетентностной матрицей департамента. Кадровая матрица показывает, что блоки 1 и 2 сегодня ведёт одна роль — Зам.директора Департамента (Власов Д.О.) — разделение на два зама в дереве отражает предложенную, ещё не внедрённую структуру. Она же даёт содержание для роли «менеджер проектов» (Утемисов М.Н.), которая упоминается как подчинённая в трёх ДИ, но собственной инструкции не имеет; при этом «Главный менеджер проектов» из ДИ, судя по всему, — отдельная новая роль, а не переименование существующей. Полная разбивка ответственности по каждому подпроцессу — в файле «ДУП_RACI_матрица.xlsx». Раздел Б — рабочая гипотеза до интервью с Финблоком, ДРБ и Юр блоком; состав чужих этапов может измениться. Подготовлено 18 августа 2026.
+  </footer>
+
+</div>
+</div>
+</body>
+</html>
