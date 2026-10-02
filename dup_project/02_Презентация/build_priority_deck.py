@@ -1361,16 +1361,32 @@ def level_role(level: str, role: str, target: str) -> str:
     return _ROLE_WORD.get(role, role.lower())
 
 
+def catalog_by_priority(rows):
+    """Сначала волна запуска, затем стыки, масштаб и наблюдение.
+
+    Внутри волны порядок — по убыванию балла. Номер в колонке «№» остаётся
+    местом в очереди работ: там объект не встаёт раньше своего предшественника,
+    поэтому во второй и третьей волнах номер и балл могут разойтись.
+    """
+    wave_index = {wave: i for i, wave in enumerate(P.WAVE_ORDER)}
+    return sorted(rows, key=lambda r: (
+        wave_index.get(r["wave"], 99),
+        -(r["total"] if r["total"] is not None else -1),
+        r["code"],
+    ))
+
+
 def build_catalog(prs: Presentation) -> None:
     """Перечень: объект, бизнес-владелец, роль ДУП по уровню, действие, волна и балл.
 
+    Строки идут по приоритету: волна, внутри волны — балл по убыванию.
     Роль ДУП стоит в одном столбце — «Процесс», «Подпроцесс» или «Этап» —
     по уровню строки. Текст действия и имя владельца не обрезаются: строка
     рассчитана на три строки при 7 pt.
     """
     page_size = 8
     items = []
-    for r in P.tree_rows(ROWS):
+    for r in catalog_by_priority(ROWS):
         items.append((
             "—" if r["rank"] is None else str(r["rank"]),
             r["name"],
@@ -1388,7 +1404,7 @@ def build_catalog(prs: Presentation) -> None:
         title(
             slide,
             "Перечень процессов",
-            f"Все {len(items)} объектов реестра по процессам. "
+            f"Все {len(items)} объектов по приоритету: волна, затем балл. "
             f"Лист {index} из {len(pages)}",
         )
         rows = [(
