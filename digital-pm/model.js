@@ -220,8 +220,74 @@
     };
   }
 
+  const PLAN = [
+    { id: "fin", name: "Финансовое закрытие", who: "Фин. блок", start: "2024-10-01", end: "2024-12-31" },
+    { id: "ppp", name: "Регистрация договора ГЧП", who: "ДРБ", start: "2024-09-29", end: "2024-10-14" },
+    { id: "tz", name: "Подготовка и согласование ТЗ", who: "ДКС", start: "2024-10-10", end: "2024-12-10" },
+    { id: "apk", name: "Поставка оборудования АПК, ОВН", who: "ОЗиС", start: "2024-10-01", end: "2025-02-01", zakup: "apk" },
+    { id: "smr-apk", name: "СМР и ПНР АПК", who: "Подрядная организация", start: "2024-10-20", end: "2025-03-17" },
+    { id: "smr-ovn", name: "СМР и ПНР ОВН", who: "Подрядная организация", start: "2024-10-20", end: "2025-03-17" },
+    { id: "patrol", name: "Поставка и настройка мобильного АПК", who: "Филиал / ST", start: "2024-10-07", end: "2025-04-28", zakup: "patrol" },
+    { id: "verify", name: "Поверка АПК (Sergek Patrol)", who: "Подрядная организация", start: "2025-04-28", end: "2025-07-15", risk: true, zakup: "verify" },
+    { id: "twin", name: "Транспортный двойник города", who: "ST", start: "2025-01-05", end: "2025-05-31" },
+    { id: "link", name: "Организация каналов связи", who: "FT", start: "2024-11-01", end: "2025-07-15", zakup: "link" },
+    { id: "video", name: "Внедрение видеоаналитики на камеры ОВН", who: "ОЗиС / ST", start: "2025-06-20", end: "2025-07-15", risk: true, zakup: "video" },
+    { id: "server", name: "Закуп серверного и сетевого оборудования", who: "VMO FT", start: "2024-10-23", end: "2025-06-30", zakup: "server" },
+    { id: "cou", name: "Оснащение ЦОУ (9 районов и Алатау)", who: "Филиал", start: "2025-04-21", end: "2025-06-10" },
+    { id: "cou-link", name: "Подключение ЦОУ к КС", who: "FT", start: "2025-05-15", end: "2025-07-15" },
+    { id: "soft", name: "Запуск ПО ЦОУ 2.0", who: "АзиаСофт", start: "2025-05-15", end: "2025-07-15", zakup: "soft" },
+    { id: "cert", name: "Сертификаты поверки и запуск штрафования", who: "Филиал", start: "2025-02-01", end: "2025-08-31", risk: true, riskFrom: "2025-04-28" },
+    { id: "dc", name: "Организация проектного ЦОД", who: "FT", start: "2025-05-22", end: "2025-06-15" },
+    { id: "pnr", name: "Пусконаладочные работы ИТ", who: "Зерек", start: "2025-06-01", end: "2025-06-30" },
+    { id: "gts", name: "ГТС КНБ РК, требования ИБ", who: "Филиал / подряд", start: "2025-06-01", end: "2025-08-31" },
+    { id: "act", name: "Подписание акта ввода в ПЭ", who: "Филиал", start: "2025-09-01", end: "2025-09-15" },
+    { id: "ops", name: "Оказание услуг", who: "Филиал", start: "2025-09-15", end: "2030-05-15" },
+  ];
+
+  function planTasks() {
+    const today = parse(TODAY);
+    return PLAN.map((task) => ({
+      ...task,
+      done: parse(task.end) < today,
+      started: parse(task.start) <= today,
+      late: !!task.risk,
+    }));
+  }
+
   function rows() {
     return LINES.map(analyze);
+  }
+
+  function notices(list) {
+    const all = list || rows();
+    const video = all.find((r) => r.id === "video");
+    const verify = all.find((r) => r.id === "verify");
+    return [
+      {
+        tone: "red",
+        tag: "Отклонение от плана",
+        text: "Поверка АПК: финиш " + shortDate(verify.forecastIso) + " вместо " + shortDate(verify.need) + ". Под угрозой запуск штрафования.",
+        go: "proekt/verify",
+      },
+      {
+        tone: "gold",
+        tag: "ОЗиС · план закупок",
+        text: "Видеоаналитика ОВН: заявку не подали. Старт " + shortDate(TODAY) + " даёт приёмку " + shortDate(video.forecastIso) + ", веха " + shortDate(video.need) + ".",
+        go: "zakupki/video",
+      },
+      {
+        tone: "blue",
+        tag: "Финблок · платежи",
+        text: "После приёмки к оплате каналы связи и поверка АПК. Сдвиг поверки оплату не двигает: в договоре оплата после поставки.",
+        go: "platezhi/verify",
+      },
+      {
+        tone: "green",
+        tag: "Выполнено",
+        text: "Регистрация договора ГЧП закрыта 14.10.24. Поставка АПК и ОВН принята 01.02.25, мобильный АПК — 28.04.25.",
+        go: "proekt/ppp",
+      },
+    ];
   }
 
   function summary(list) {
@@ -267,6 +333,8 @@
     CHART_END,
     PROJECT_COST,
     rows,
+    planTasks,
+    notices,
     summary,
     shortDate,
     pos,

@@ -57,8 +57,11 @@
   .switch { display: flex; background: white; border-radius: 10px; padding: 3px; box-shadow: var(--shadow); flex-shrink: 0; }
   .switch button { border: 0; background: transparent; border-radius: 8px; padding: 7px 12px; color: var(--muted); white-space: nowrap; font-size: 13px; }
   .switch button[aria-pressed="true"] { background: var(--pill); color: white; font-weight: 600; }
-  .workspace { display: grid; grid-template-columns: 1fr 292px; gap: 16px; min-height: 0; flex: 1; align-items: start; }
-  .stage { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+  .workspace { display: grid; grid-template-columns: 1fr 292px; gap: 16px; min-height: 0; flex: 1; align-items: stretch; }
+  .workspace.solo { grid-template-columns: 1fr; }
+  .workspace.solo .rail { display: none; }
+  .stage { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 12px; overflow: auto; }
+  .rail { min-height: 0; overflow: auto; }
   .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
   .kpi { background: white; border-radius: 14px; padding: 12px 16px 14px; box-shadow: var(--shadow); }
   .kpi b { display: block; font-size: 30px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
@@ -66,7 +69,8 @@
   .kpi.bad b { color: var(--red); }
   .rail h2 { margin: 2px 0 10px; font-size: 16px; font-weight: 700; }
   .notes { display: flex; flex-direction: column; gap: 10px; }
-  .note { background: white; border-radius: 12px; padding: 12px 14px 14px; box-shadow: var(--shadow); border-top: 3px solid var(--red); }
+  .note { display: block; width: 100%; text-align: left; background: white; border: 0; border-radius: 12px; padding: 12px 14px 14px; box-shadow: var(--shadow); border-top: 3px solid var(--red); }
+  .note-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .note.gold { border-top-color: var(--gold); }
   .note.blue { border-top-color: var(--pill); }
   .note.green { border-top-color: var(--green); }
@@ -80,7 +84,7 @@
   table { width: 100%; border-collapse: collapse; }
   th {
     text-align: left; font-size: 13px; font-weight: 500;
-    color: var(--muted); padding: 4px 8px 8px; background: transparent;
+    color: var(--muted); padding: 4px 8px 8px; background: var(--bg);
     position: sticky; top: 0;
   }
   td { padding: 5px 8px; vertical-align: middle; font-size: 13.5px; background: transparent; }
@@ -96,11 +100,15 @@
   .bar { top: 6px; height: 10px; border-radius: 2px; }
   .bar.navy, .bar.done { background: var(--navy); }
   .bar.late { background: var(--red); }
+  .bar.risk { background: #e8892c; }
   .bar.miss { background: repeating-linear-gradient(90deg, #f3c1be, #f3c1be 3px, transparent 3px, transparent 6px); }
   .need { width: 0; border-left: 1.5px solid #1c2b3a; top: 3px; bottom: 3px; }
   .months { display: flex; }
   .months span { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); text-align: center; white-space: nowrap; }
   .months.letters span { font-size: 12px; letter-spacing: 0.02em; }
+  table.dense td { padding: 2px 8px; }
+  table.dense .chart { height: 16px; }
+  table.dense .bar { top: 3px; height: 9px; }
   table.gantt th:nth-child(1), table.gantt td:nth-child(1) { width: 250px; }
   table.gantt th:nth-child(2), table.gantt td:nth-child(2) { width: 120px; }
   .legend { display: flex; gap: 16px; flex-wrap: wrap; padding: 8px 8px 0; color: var(--muted); font-size: 12px; }
@@ -126,11 +134,11 @@
 <div class="app">
   <aside class="nav">
     <div class="logo">Цифровой ПМ</div>
-    <button type="button">План проекта</button>
-    <button type="button" aria-current="page">План закупок</button>
-    <button type="button">Расходные договоры</button>
-    <button type="button">Платежи</button>
-    <button type="button">Уведомления</button>
+    <button type="button" data-view="proekt">План проекта</button>
+    <button type="button" data-view="zakupki">План закупок</button>
+    <button type="button" data-view="dogovory">Расходные договоры</button>
+    <button type="button" data-view="platezhi">Платежи</button>
+    <button type="button" data-view="uvedomleniya">Уведомления</button>
     <div class="spacer"></div>
     <div class="src">Устав 1.05 от 22.05.2025<br>Правила закупок</div>
   </aside>
@@ -139,10 +147,6 @@
       <div class="titles">
         <h1>Услуги по предоставлению данных ИС ДОБ · Алматинская область</h1>
         <p class="sub" id="sub"></p>
-      </div>
-      <div class="switch">
-        <button type="button" id="to-gantt" aria-pressed="true">График закупок</button>
-        <button type="button" id="to-exec" aria-pressed="false">Исполнение бюджета</button>
       </div>
     </div>
     <div class="workspace">
@@ -159,7 +163,8 @@
 </div>
 <script>
 const M = window.DigitalPm;
-const state = { view: "gantt", open: null };
+const state = { view: "proekt", open: null };
+const VIEW_ALIAS = { gantt: "zakupki", ispolnenie: "platezhi" };
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -168,41 +173,33 @@ function el(tag, cls, text) {
   return n;
 }
 function readHash() {
-  const [view, id] = location.hash.replace("#", "").split("/");
-  state.view = view === "ispolnenie" ? "exec" : "gantt";
-  const known = new Set(M.rows().map((r) => r.id));
-  state.open = known.has(id) ? id : null;
+  const [raw, id] = location.hash.replace("#", "").split("/");
+  const view = VIEW_ALIAS[raw] || raw;
+  const known = ["proekt", "zakupki", "dogovory", "platezhi", "uvedomleniya"];
+  state.view = known.indexOf(view) >= 0 ? view : "proekt";
+  state.open = id || null;
 }
 function writeHash() {
-  const view = state.view === "exec" ? "ispolnenie" : "gantt";
-  const next = "#" + view + (state.open ? "/" + state.open : "");
+  const next = "#" + state.view + (state.open ? "/" + state.open : "");
   if (location.hash !== next) history.replaceState(null, "", next);
 }
 
 function render() {
   const list = M.rows();
+  const plan = M.planTasks();
   const s = M.summary(list);
+  const notesData = M.notices(list);
   document.getElementById("sub").textContent =
     "Срез " + M.shortDate(M.TODAY) + " · ввод в ПЭ " + M.shortDate(M.COMMISSION) + " · " + M.PROJECT_COST;
-  document.getElementById("to-gantt").setAttribute("aria-pressed", String(state.view === "gantt"));
-  document.getElementById("to-exec").setAttribute("aria-pressed", String(state.view === "exec"));
+  document.querySelectorAll(".nav button").forEach((btn) => {
+    if (btn.dataset.view === state.view) btn.setAttribute("aria-current", "page");
+    else btn.removeAttribute("aria-current");
+  });
+  document.querySelector(".workspace").classList.toggle("solo", state.view === "uvedomleniya");
 
   const kpis = document.getElementById("kpis");
   kpis.replaceChildren();
-  const cards = state.view === "gantt"
-    ? [
-        [String(s.total), "строк в плане закупок"],
-        [String(s.total - s.late), "к дате потребности"],
-        [String(s.late), "с отклонением", s.late ? "bad" : ""],
-        [M.shortDate(M.COMMISSION), "ввод в ПЭ"],
-      ]
-    : [
-        [String(s.contract), "договоров из " + s.total],
-        [String(s.paid), "строк оплачено"],
-        [String(s.delivered), "поставлено — исполнение", ""],
-        [String(s.late), "прогноз позже даты", s.late ? "bad" : ""],
-      ];
-  cards.forEach(([value, label, tone]) => {
+  kpiCards(list, plan, s, notesData).forEach(([value, label, tone]) => {
     const k = el("div", "kpi" + (tone ? " " + tone : ""));
     k.appendChild(el("b", "", value));
     k.appendChild(el("span", "", label));
@@ -211,33 +208,207 @@ function render() {
 
   const panel = document.getElementById("panel");
   panel.replaceChildren();
-  if (state.view === "gantt") panel.appendChild(gantt(list));
-  else panel.appendChild(execution(list, s));
+  if (state.view === "proekt") panel.appendChild(planGantt(plan));
+  else if (state.view === "zakupki") panel.appendChild(gantt(list));
+  else if (state.view === "dogovory") panel.appendChild(contracts(list));
+  else if (state.view === "platezhi") panel.appendChild(execution(list, s));
+  else panel.appendChild(noticeBoard(notesData));
 
   const notes = document.getElementById("notes");
   notes.replaceChildren();
-  const video = list.find((r) => r.id === "video");
-  const verify = list.find((r) => r.id === "verify");
-  notes.appendChild(card("red", "Отклонение от плана",
-    "Поверка АПК: финиш " + M.shortDate(verify.forecastIso) + " вместо " + M.shortDate(verify.need) + ". Под угрозой запуск штрафования."));
-  notes.appendChild(card("gold", "ОЗиС · план закупок",
-    "Видеоаналитика ОВН: заявку не подали. Старт " + M.shortDate(M.TODAY) + " даёт приёмку " + M.shortDate(video.forecastIso) + ", веха " + M.shortDate(video.need) + "."));
-  notes.appendChild(card("green", "Выполнено",
-    "Поставка АПК и ОВН принята 01.02.25. Мобильный АПК принят 28.04.25, до старта поверки."));
-  if (state.view === "exec") {
-    notes.appendChild(card("blue", "Как считается исполнение",
-      "Исполнение — только поставленные и принятые ТРУ. Договор и оплата видны отдельно. Оплата после приёмки не двигает дату каналов и поверки."));
-  }
+  notesData.forEach((n) => notes.appendChild(card(n.tone, n.tag, n.text, n.go)));
   writeHash();
 }
 
-function card(tone, tag, text) {
-  const n = el("article", "note " + tone);
-  n.appendChild(el("div", "tag", tag));
-  n.appendChild(el("p", "", text));
-  return n;
+function kpiCards(list, plan, s, notesData) {
+  if (state.view === "proekt") {
+    return [
+      [String(plan.length), "задач в плане"],
+      [String(new Set(plan.map((t) => t.who)).size), "исполнителей"],
+      [String(plan.filter((t) => t.late).length), "с отклонением", "bad"],
+      [M.shortDate(M.COMMISSION), "ввод в ПЭ"],
+    ];
+  }
+  if (state.view === "zakupki") {
+    return [
+      [String(s.total), "строк в плане закупок"],
+      [String(s.total - s.late), "к дате потребности"],
+      [String(s.late), "с отклонением", s.late ? "bad" : ""],
+      [M.shortDate(M.COMMISSION), "ввод в ПЭ"],
+    ];
+  }
+  if (state.view === "dogovory") {
+    const procedure = list.filter((r) => r.state === "procedure").length;
+    const missing = list.filter((r) => !r.contract && r.state !== "procedure").length;
+    return [
+      [String(s.contract), "договоров заключено"],
+      [String(procedure), "идёт процедура"],
+      [String(missing), "заявка не подана", missing ? "bad" : ""],
+      [String(s.total), "строк закупки"],
+    ];
+  }
+  if (state.view === "platezhi") {
+    return [
+      [String(s.contract), "договоров из " + s.total],
+      [String(s.paid), "строк оплачено"],
+      [String(s.delivered), "поставлено — исполнение"],
+      [String(s.late), "прогноз позже даты", s.late ? "bad" : ""],
+    ];
+  }
+  return [
+    [String(notesData.length), "уведомлений"],
+    [String(notesData.filter((n) => n.tone === "red").length), "отклонения", "bad"],
+    [String(notesData.filter((n) => n.tone === "gold" || n.tone === "blue").length), "требуют действия"],
+    [String(notesData.filter((n) => n.tone === "green").length), "выполнено"],
+  ];
 }
 
+function card(tone, tag, text, go) {
+  const n = el("button", "note " + tone);
+  n.type = "button";
+  n.appendChild(el("div", "tag", tag));
+  n.appendChild(el("p", "", text));
+  if (go) n.addEventListener("click", () => follow(go));
+  return n;
+}
+function follow(go) {
+  const [view, id] = go.split("/");
+  state.view = view;
+  state.open = id || null;
+  render();
+}
+function noticeBoard(items) {
+  const grid = el("div", "note-grid");
+  items.forEach((n) => grid.appendChild(card(n.tone, n.tag, n.text, n.go)));
+  return grid;
+}
+
+function planGantt(list) {
+  const wrap = el("div");
+  const table = document.createElement("table");
+  table.className = "gantt dense";
+  const hr = document.createElement("tr");
+  hr.appendChild(el("th", "", "Задача"));
+  hr.appendChild(el("th", "", "Исполнитель"));
+  const th = document.createElement("th");
+  th.appendChild(monthHead());
+  hr.appendChild(th);
+  const thead = document.createElement("thead");
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  const body = document.createElement("tbody");
+  list.forEach((t) => {
+    const tr = document.createElement("tr");
+    if (t.late) tr.className = "late";
+    if (state.open === t.id) tr.classList.add("open");
+    tr.tabIndex = 0;
+    tr.setAttribute("role", "button");
+    tr.appendChild(cell(t.name));
+    tr.appendChild(cell(t.who, "who"));
+    const td = document.createElement("td");
+    td.appendChild(planBar(t));
+    tr.appendChild(td);
+    tr.addEventListener("click", () => toggle(t.id));
+    tr.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(t.id); }
+    });
+    body.appendChild(tr);
+    if (state.open === t.id) body.appendChild(planDetail(t));
+  });
+  table.appendChild(body);
+  wrap.appendChild(table);
+  const legend = el("div", "legend");
+  legend.appendChild(spanSw("navy", "срок по уставу"));
+  legend.appendChild(spanSw("risk", "отклонение в уставе"));
+  legend.appendChild(el("span", "", "Пунктир — ввод в ПЭ. Серая черта — срез " + M.shortDate(M.TODAY) + "."));
+  wrap.appendChild(legend);
+  return wrap;
+}
+function planBar(t) {
+  const box = el("div", "chart");
+  M.months().forEach((m) => {
+    const g = el("i", "gridline");
+    g.style.left = M.pos(m.start) + "%";
+    box.appendChild(g);
+  });
+  const a = M.pos(t.start);
+  const b = M.pos(t.end);
+  if (t.risk && t.riskFrom) {
+    paint(box, a, M.pos(t.riskFrom), "navy");
+    paint(box, M.pos(t.riskFrom), b, "risk");
+  } else {
+    paint(box, a, b, t.risk ? "risk" : "navy");
+  }
+  const today = el("i", "mark today");
+  today.style.left = M.pos(M.TODAY) + "%";
+  box.appendChild(today);
+  const comm = el("i", "mark");
+  comm.style.left = M.pos(M.COMMISSION) + "%";
+  box.appendChild(comm);
+  return box;
+}
+function paint(box, a, b, cls) {
+  const bar = el("i", "bar " + cls);
+  bar.style.left = a + "%";
+  bar.style.width = Math.max(0.5, b - a) + "%";
+  box.appendChild(bar);
+}
+function planDetail(t) {
+  const tr = document.createElement("tr");
+  const td = document.createElement("td");
+  td.colSpan = 3;
+  const box = el("div", "detail");
+  const finish = t.id === "ops" ? "15.05.30, на графике виден старт" : M.shortDate(t.end);
+  box.appendChild(el("div", "", "По уставу: " + M.shortDate(t.start) + " — " + finish + "."));
+  if (t.risk && t.riskFrom) {
+    box.appendChild(el("div", "", "Оранжевый хвост — с 28.04.25, даты старта поверки. От неё зависит запуск штрафования."));
+  } else if (t.risk) {
+    box.appendChild(el("div", "", "В уставе задача выделена как отклонение."));
+  }
+  if (t.zakup) {
+    const jump = el("button", "tag");
+    jump.type = "button";
+    jump.textContent = "Открыть в плане закупок";
+    jump.addEventListener("click", (e) => { e.stopPropagation(); follow("zakupki/" + t.zakup); });
+    box.appendChild(jump);
+  }
+  td.appendChild(box);
+  tr.appendChild(td);
+  return tr;
+}
+function contracts(list) {
+  const wrap = el("div");
+  const table = document.createElement("table");
+  const hr = document.createElement("tr");
+  ["ТРУ", "Контрагент", "Договор", "Потребность", "Прогноз"].forEach((t) => hr.appendChild(el("th", "", t)));
+  const thead = document.createElement("thead");
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  const body = document.createElement("tbody");
+  list.forEach((r) => {
+    const tr = document.createElement("tr");
+    if (!r.contract && r.state !== "procedure") tr.className = "late";
+    if (state.open === r.id) tr.classList.add("open");
+    tr.tabIndex = 0;
+    tr.setAttribute("role", "button");
+    tr.appendChild(cell(r.name));
+    tr.appendChild(cell(r.who, "who"));
+    const status = r.contract ? "Заключён" : r.state === "procedure" ? "Идёт процедура" : "Заявка не подана";
+    const tone = r.contract ? "ok" : r.state === "procedure" ? "" : "bad";
+    tr.appendChild(cell(status, tone ? "chip " + tone : "who"));
+    tr.appendChild(cell(M.shortDate(r.need)));
+    tr.appendChild(cell(M.shortDate(r.forecastIso), r.slip > 0 ? "chip bad" : ""));
+    tr.addEventListener("click", () => toggle(r.id));
+    tr.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(r.id); }
+    });
+    body.appendChild(tr);
+    if (state.open === r.id) body.appendChild(detailRow(r, 5));
+  });
+  table.appendChild(body);
+  wrap.appendChild(table);
+  return wrap;
+}
 function monthHead() {
   const box = el("div");
   const years = el("div", "months");
@@ -300,9 +471,8 @@ function gantt(list) {
 function spanSw(cls, text) {
   const s = el("span");
   const i = el("i", "sw " + cls);
-  i.style.background = cls === "navy" ? "var(--navy)" : cls === "done" ? "var(--green)" : cls === "miss"
-    ? "repeating-linear-gradient(90deg, #f3c1be, #f3c1be 3px, transparent 3px, transparent 5px)"
-    : "var(--red)";
+  const fills = { navy: "var(--navy)", done: "var(--green)", risk: "#e8892c", miss: "repeating-linear-gradient(90deg, #f3c1be, #f3c1be 3px, transparent 3px, transparent 5px)" };
+  i.style.background = fills[cls] || "var(--red)";
   s.appendChild(i);
   s.append(text);
   return s;
@@ -433,11 +603,16 @@ function setView(view) {
   state.open = null;
   render();
 }
-document.getElementById("to-gantt").addEventListener("click", () => setView("gantt"));
-document.getElementById("to-exec").addEventListener("click", () => setView("exec"));
+const ORDER = ["proekt", "zakupki", "dogovory", "platezhi", "uvedomleniya"];
+document.querySelectorAll(".nav button").forEach((btn) => {
+  btn.addEventListener("click", () => setView(btn.dataset.view));
+});
 document.addEventListener("keydown", (e) => {
-  if (e.key === "ArrowRight") setView("exec");
-  if (e.key === "ArrowLeft") setView("gantt");
+  if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+  if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+  const i = ORDER.indexOf(state.view);
+  const step = e.key === "ArrowRight" ? 1 : -1;
+  setView(ORDER[(i + step + ORDER.length) % ORDER.length]);
 });
 readHash();
 render();
