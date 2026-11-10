@@ -140,12 +140,12 @@
     <button type="button" data-view="platezhi">Платежи</button>
     <button type="button" data-view="uvedomleniya">Уведомления</button>
     <div class="spacer"></div>
-    <div class="src">Учебный пример<br>Данные вымышлены</div>
+    <div class="src">Устав 1.05 от 22.05.2025<br>Правила закупок</div>
   </aside>
   <main>
     <div class="head">
       <div class="titles">
-        <h1>Оснащение учебного кампуса «Норд» · вымышленный пример</h1>
+        <h1>Услуги по предоставлению данных ИС ДОБ · Алматинская область</h1>
         <p class="sub" id="sub"></p>
       </div>
     </div>
@@ -318,8 +318,8 @@ function planGantt(list) {
   table.appendChild(body);
   wrap.appendChild(table);
   const legend = el("div", "legend");
-  legend.appendChild(spanSw("navy", "срок по плану"));
-  legend.appendChild(spanSw("risk", "отклонение в плане"));
+  legend.appendChild(spanSw("navy", "срок по уставу"));
+  legend.appendChild(spanSw("risk", "отклонение в уставе"));
   legend.appendChild(el("span", "", "Пунктир — ввод в ПЭ. Серая черта — срез " + M.shortDate(M.TODAY) + "."));
   wrap.appendChild(legend);
   return wrap;
@@ -359,11 +359,11 @@ function planDetail(t) {
   td.colSpan = 3;
   const box = el("div", "detail");
   const finish = t.id === "ops" ? "15.05.30, на графике виден старт" : M.shortDate(t.end);
-  box.appendChild(el("div", "", "По плану: " + M.shortDate(t.start) + " — " + finish + "."));
+  box.appendChild(el("div", "", "По уставу: " + M.shortDate(t.start) + " — " + finish + "."));
   if (t.risk && t.riskFrom) {
-    box.appendChild(el("div", "", "Оранжевый хвост — с 28.04.25, даты старта поверки. От неё зависит запуск сервиса."));
+    box.appendChild(el("div", "", "Оранжевый хвост — с 28.04.25, даты старта поверки. От неё зависит запуск штрафования."));
   } else if (t.risk) {
-    box.appendChild(el("div", "", "В учебном плане задача выделена как отклонение."));
+    box.appendChild(el("div", "", "В уставе задача выделена как отклонение."));
   }
   if (t.zakup) {
     const jump = el("button", "tag");
@@ -522,7 +522,7 @@ function bar(r) {
 function execution(list, s) {
   const wrap = el("div");
   const funnel = el("div", "funnel");
-  funnel.appendChild(el("div", "cap", "Исполнение бюджета — поставка. Договор и оплата показывают шаг, но в исполнение не входят. Суммы строк в примере не заданы, шкала — по числу строк. Стоимость учебного проекта — " + M.PROJECT_COST + "."));
+  funnel.appendChild(el("div", "cap", "Исполнение бюджета — поставка. Договор и оплата показывают шаг, но в исполнение не входят. Суммы строк в уставе не выделены, шкала — по числу строк. Стоимость всего проекта — " + M.PROJECT_COST + "."));
   const scale = s.total || 1;
   [
     ["Строк закупки", s.total, "all"],

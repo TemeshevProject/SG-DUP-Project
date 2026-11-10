@@ -162,7 +162,7 @@ def shell(slide, data, view):
         y += 0.46
     textbox(
         slide, 0.16, 6.55, SIDE - 0.32, 0.78,
-        ["Учебный пример.", "Данные вымышлены."],
+        ["Устав 1.05 от 22.05.2025.", "Правила закупок."],
         size=10, color="nav", anchor="b", margin=0.02,
     )
 
@@ -172,12 +172,12 @@ def shell(slide, data, view):
     switch_x = content_r - switch_w
     textbox(
         slide, content_x, 0.08, switch_x - content_x - 0.12, 0.46,
-        "Оснащение учебного кампуса «Норд» · вымышленный пример",
+        "Услуги по предоставлению данных ИС ДОБ · Алматинская область",
         size=13, bold=True, anchor="ctr", margin=0,
     )
     textbox(
         slide, content_x, 0.56, content_r - content_x, 0.22,
-        "Срез " + data["today"] + "  ·  ввод " + data["commission"] + "  ·  учебный проект " + data["cost"],
+        "Срез " + data["today"] + "  ·  ввод в ПЭ " + data["commission"] + "  ·  по уставу " + data["cost"],
         size=11, color="muted", anchor="ctr", margin=0,
     )
     rect(slide, switch_x, 0.12, switch_w, switch_h, C["card"], line=C["line"], radius=0.4)
@@ -234,9 +234,9 @@ def cards(slide, geo, data, view):
     video = next(r for r in data["rows"] if r["id"] == "video")
     verify = next(r for r in data["rows"] if r["id"] == "verify")
     items = [
-        ("red", "Отклонение от плана", "Поверка комплекта: финиш " + verify["forecastDate"] + " вместо " + verify["needDate"] + ". Под угрозой запуск сервиса."),
-        ("gold", "НордСнаб · план закупок", "Видеоаналитика: заявку не подали. Старт " + data["today"] + " даёт приёмку " + video["forecastDate"] + ", веха " + video["needDate"] + "."),
-        ("green", "Выполнено", "Датчики и камеры приняты 01.02.25. Мобильный комплект принят 28.04.25, до старта поверки."),
+        ("red", "Отклонение от плана", "Поверка АПК: финиш " + verify["forecastDate"] + " вместо " + verify["needDate"] + ". Под угрозой запуск штрафования."),
+        ("gold", "ОЗиС · план закупок", "Видеоаналитика ОВН: заявку не подали. Старт " + data["today"] + " даёт приёмку " + video["forecastDate"] + ", веха " + video["needDate"] + "."),
+        ("green", "Выполнено", "Поставка АПК и ОВН принята 01.02.25. Мобильный АПК принят 28.04.25, до старта поверки."),
     ]
     if view == "exec":
         items.append(("pill", "Как считается исполнение", "Исполнение — только поставленные и принятые ТРУ. Договор и оплата видны отдельно. Оплата после приёмки не двигает дату каналов и поверки."))
@@ -347,7 +347,7 @@ def execution(slide, data, geo):
     rect(slide, px, py, pw, ph, C["card"], line=C["line"], radius=0.08)
     textbox(
         slide, px + 0.12, py + 0.08, pw - 0.24, 0.46,
-        "Исполнение — поставка. Договор и оплата видны отдельно и в исполнение не входят. Суммы строк в примере не заданы, шкала — по числу строк.",
+        "Исполнение — поставка. Договор и оплата видны отдельно и в исполнение не входят. Суммы строк в уставе не выделены, шкала — по числу строк.",
         size=12, color="muted", anchor="t", margin=0,
     )
     s = data["summary"]
