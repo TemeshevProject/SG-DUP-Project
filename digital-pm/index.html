@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Цифровой ПМ — план закупок</title>
+<script src="model.js"></script>
+<style>
+  :root {
+    --side: #013d85;
+    --pill: #4284f4;
+    --bg: #f5f6fa;
+    --card: #ffffff;
+    --ink: #1c2b3a;
+    --muted: #8b97a3;
+    --line: #e6ebf2;
+    --navy: #013d85;
+    --green: #29a768;
+    --red: #eb4038;
+    --gold: #e2a100;
+    --today: #9aa8b8;
+    --shadow: 0 1px 2px rgba(16, 42, 87, 0.04), 0 8px 20px rgba(16, 42, 87, 0.05);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: Inter, "Segoe UI", "Helvetica Neue", sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .app { height: 100vh; display: grid; grid-template-columns: 220px 1fr; }
+  aside.nav {
+    background: var(--side);
+    color: white;
+    display: flex;
+    flex-direction: column;
+    padding: 22px 12px 18px;
+  }
+  .logo { font-weight: 700; font-size: 16px; padding: 0 12px 22px; }
+  .nav button {
+    display: block; width: 100%; text-align: left;
+    background: transparent; border: 0; color: #fff;
+    border-radius: 8px; padding: 10px 14px; margin: 2px 0; font-size: 14px;
+  }
+  .nav button[aria-current="page"] { background: var(--pill); font-weight: 600; }
+  .nav button:focus-visible, .switch button:focus-visible, tr[role="button"]:focus-visible {
+    outline: 2px solid #9cc4ff; outline-offset: 2px;
+  }
+  .nav .spacer { flex: 1; }
+  .nav .src { color: rgba(255, 255, 255, 0.72); font-size: 12px; padding: 8px 12px; line-height: 1.4; }
+  main { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 18px 20px 16px; gap: 14px; }
+  .head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+  .titles { min-width: 0; }
+  h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.02em; }
+  .sub { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+  .switch { display: flex; background: white; border-radius: 10px; padding: 3px; box-shadow: var(--shadow); flex-shrink: 0; }
+  .switch button { border: 0; background: transparent; border-radius: 8px; padding: 7px 12px; color: var(--muted); white-space: nowrap; font-size: 13px; }
+  .switch button[aria-pressed="true"] { background: var(--pill); color: white; font-weight: 600; }
+  .workspace { display: grid; grid-template-columns: 1fr 292px; gap: 16px; min-height: 0; flex: 1; align-items: stretch; }
+  .workspace.solo { grid-template-columns: 1fr; }
+  .workspace.solo .rail { display: none; }
+  .stage { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 12px; overflow: auto; }
+  .rail { min-height: 0; overflow: auto; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .kpi { background: white; border-radius: 14px; padding: 12px 16px 14px; box-shadow: var(--shadow); }
+  .kpi b { display: block; font-size: 30px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
+  .kpi span { color: var(--muted); font-size: 13px; }
+  .kpi.bad b { color: var(--red); }
+  .rail h2 { margin: 2px 0 10px; font-size: 16px; font-weight: 700; }
+  .notes { display: flex; flex-direction: column; gap: 10px; }
+  .note { display: block; width: 100%; text-align: left; background: white; border: 0; border-radius: 12px; padding: 12px 14px 14px; box-shadow: var(--shadow); border-top: 3px solid var(--red); }
+  .note-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .note.gold { border-top-color: var(--gold); }
+  .note.blue { border-top-color: var(--pill); }
+  .note.green { border-top-color: var(--green); }
+  .note p { margin: 4px 0 0; font-size: 13px; line-height: 1.35; }
+  .note .tag { font-size: 13px; font-weight: 700; }
+  .note.red .tag { color: var(--red); }
+  .note.gold .tag { color: #c48a00; }
+  .note.green .tag { color: var(--green); }
+  .note.blue .tag { color: var(--pill); }
+  .panel { min-width: 0; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left; font-size: 13px; font-weight: 500;
+    color: var(--muted); padding: 4px 8px 8px; background: var(--bg);
+    position: sticky; top: 0;
+  }
+  td { padding: 5px 8px; vertical-align: middle; font-size: 13.5px; background: transparent; }
+  tr[role="button"] { cursor: pointer; }
+  tr.late td { background: #fdeded; }
+  tr.open td { background: #f3f7fd; }
+  .who { color: #5d6b7a; }
+  .chart { position: relative; height: 22px; }
+  .gridline, .mark, .bar, .need { position: absolute; top: 0; bottom: 0; }
+  .gridline { width: 1px; background: transparent; }
+  .mark { width: 0; border-left: 1.5px dashed var(--green); }
+  .mark.today { border-left: 1px solid var(--today); }
+  .bar { top: 6px; height: 10px; border-radius: 2px; }
+  .bar.navy, .bar.done { background: var(--navy); }
+  .bar.late { background: var(--red); }
+  .bar.risk { background: #e8892c; }
+  .bar.miss { background: repeating-linear-gradient(90deg, #f3c1be, #f3c1be 3px, transparent 3px, transparent 6px); }
+  .need { width: 0; border-left: 1.5px solid #1c2b3a; top: 3px; bottom: 3px; }
+  .months { display: flex; }
+  .months span { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); text-align: center; white-space: nowrap; }
+  .months.letters span { font-size: 12px; letter-spacing: 0.02em; }
+  table.dense td { padding: 2px 8px; }
+  table.dense .chart { height: 16px; }
+  table.dense .bar { top: 3px; height: 9px; }
+  table.gantt th:nth-child(1), table.gantt td:nth-child(1) { width: 250px; }
+  table.gantt th:nth-child(2), table.gantt td:nth-child(2) { width: 120px; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; padding: 8px 8px 0; color: var(--muted); font-size: 12px; }
+  .sw { display: inline-block; width: 16px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  .funnel { display: grid; grid-template-columns: 150px 1fr 36px; gap: 8px 10px; align-items: center; padding: 14px 16px; background: white; border-radius: 14px; box-shadow: var(--shadow); margin-bottom: 8px; }
+  .funnel i { font-style: normal; font-size: 13px; }
+  .track { height: 10px; background: #e7eef6; border-radius: 99px; overflow: hidden; }
+  .fill { height: 100%; border-radius: 99px; }
+  .fill.all { background: #b7c3d1; }
+  .fill.c { background: var(--navy); }
+  .fill.p { background: var(--gold); }
+  .fill.d { background: var(--green); }
+  .cap { grid-column: 1 / -1; color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+  .detail { padding: 4px 8px 12px; color: var(--ink); font-size: 13px; line-height: 1.45; }
+  .chip { font-weight: 700; }
+  .chip.ok { color: var(--green); }
+  .chip.bad { color: var(--red); }
+  .on { color: var(--green); font-weight: 650; }
+  .off { color: #b0bac4; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="nav">
+    <div class="logo">Цифровой ПМ</div>
+    <button type="button" data-view="proekt">План проекта</button>
+    <button type="button" data-view="zakupki">План закупок</button>
+    <button type="button" data-view="dogovory">Расходные договоры</button>
+    <button type="button" data-view="platezhi">Платежи</button>
+    <button type="button" data-view="uvedomleniya">Уведомления</button>
+    <div class="spacer"></div>
+    <div class="src">Устав 1.05 от 22.05.2025<br>Правила закупок</div>
+  </aside>
+  <main>
+    <div class="head">
+      <div class="titles">
+        <h1>Услуги по предоставлению данных ИС ДОБ · Алматинская область</h1>
+        <p class="sub" id="sub"></p>
+      </div>
+    </div>
+    <div class="workspace">
+      <div class="stage">
+        <div class="kpis" id="kpis"></div>
+        <div class="panel" id="panel"></div>
+      </div>
+      <aside class="rail">
+        <h2>Уведомления</h2>
+        <div class="notes" id="notes"></div>
+      </aside>
+    </div>
+  </main>
+</div>
+<script>
+const M = window.DigitalPm;
+const state = { view: "proekt", open: null };
+const VIEW_ALIAS = { gantt: "zakupki", ispolnenie: "platezhi" };
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+}
+function readHash() {
+  const [raw, id] = location.hash.replace("#", "").split("/");
+  const view = VIEW_ALIAS[raw] || raw;
+  const known = ["proekt", "zakupki", "dogovory", "platezhi", "uvedomleniya"];
+  state.view = known.indexOf(view) >= 0 ? view : "proekt";
+  state.open = id || null;
+}
+function writeHash() {
+  const next = "#" + state.view + (state.open ? "/" + state.open : "");
+  if (location.hash !== next) history.replaceState(null, "", next);
+}
+
+function render() {
+  const list = M.rows();
+  const plan = M.planTasks();
+  const s = M.summary(list);
+  const notesData = M.notices(list);
+  document.getElementById("sub").textContent =
+    "Срез " + M.shortDate(M.TODAY) + " · ввод в ПЭ " + M.shortDate(M.COMMISSION) + " · " + M.PROJECT_COST;
+  document.querySelectorAll(".nav button").forEach((btn) => {
+    if (btn.dataset.view === state.view) btn.setAttribute("aria-current", "page");
+    else btn.removeAttribute("aria-current");
+  });
+  document.querySelector(".workspace").classList.toggle("solo", state.view === "uvedomleniya");
+
+  const kpis = document.getElementById("kpis");
+  kpis.replaceChildren();
+  kpiCards(list, plan, s, notesData).forEach(([value, label, tone]) => {
+    const k = el("div", "kpi" + (tone ? " " + tone : ""));
+    k.appendChild(el("b", "", value));
+    k.appendChild(el("span", "", label));
+    kpis.appendChild(k);
+  });
+
+  const panel = document.getElementById("panel");
+  panel.replaceChildren();
+  if (state.view === "proekt") panel.appendChild(planGantt(plan));
+  else if (state.view === "zakupki") panel.appendChild(gantt(list));
+  else if (state.view === "dogovory") panel.appendChild(contracts(list));
+  else if (state.view === "platezhi") panel.appendChild(execution(list, s));
+  else panel.appendChild(noticeBoard(notesData));
+
+  const notes = document.getElementById("notes");
+  notes.replaceChildren();
+  notesData.forEach((n) => notes.appendChild(card(n.tone, n.tag, n.text, n.go)));
+  writeHash();
+}
+
+function kpiCards(list, plan, s, notesData) {
+  if (state.view === "proekt") {
+    return [
+      [String(plan.length), "задач в плане"],
+      [String(new Set(plan.map((t) => t.who)).size), "исполнителей"],
+      [String(plan.filter((t) => t.late).length), "с отклонением", "bad"],
+      [M.shortDate(M.COMMISSION), "ввод в ПЭ"],
+    ];
+  }
+  if (state.view === "zakupki") {
+    return [
+      [String(s.total), "строк в плане закупок"],
+      [String(s.total - s.late), "к дате потребности"],
+      [String(s.late), "с отклонением", s.late ? "bad" : ""],
+      [M.shortDate(M.COMMISSION), "ввод в ПЭ"],
+    ];
+  }
+  if (state.view === "dogovory") {
+    const procedure = list.filter((r) => r.state === "procedure").length;
+    const missing = list.filter((r) => !r.contract && r.state !== "procedure").length;
+    return [
+      [String(s.contract), "договоров заключено"],
+      [String(procedure), "идёт процедура"],
+      [String(missing), "заявка не подана", missing ? "bad" : ""],
+      [String(s.total), "строк закупки"],
+    ];
+  }
+  if (state.view === "platezhi") {
+    return [
+      [String(s.contract), "договоров из " + s.total],
+      [String(s.paid), "строк оплачено"],
+      [String(s.delivered), "поставлено — исполнение"],
+      [String(s.late), "прогноз позже даты", s.late ? "bad" : ""],
+    ];
+  }
+  return [
+    [String(notesData.length), "уведомлений"],
+    [String(notesData.filter((n) => n.tone === "red").length), "отклонения", "bad"],
+    [String(notesData.filter((n) => n.tone === "gold" || n.tone === "blue").length), "требуют действия"],
+    [String(notesData.filter((n) => n.tone === "green").length), "выполнено"],
+  ];
+}
+
+function card(tone, tag, text, go) {
+  const n = el("button", "note " + tone);
+  n.type = "button";
+  n.appendChild(el("div", "tag", tag));
+  n.appendChild(el("p", "", text));
+  if (go) n.addEventListener("click", () => follow(go));
+  return n;
+}
+function follow(go) {
+  const [view, id] = go.split("/");
+  state.view = view;
+  state.open = id || null;
+  render();
+}
+function noticeBoard(items) {
+  const grid = el("div", "note-grid");
+  items.forEach((n) => grid.appendChild(card(n.tone, n.tag, n.text, n.go)));
+  return grid;
+}
+
+function planGantt(list) {
+  const wrap = el("div");
+  const table = document.createElement("table");
+  table.className = "gantt dense";
+  const hr = document.createElement("tr");
+  hr.appendChild(el("th", "", "Задача"));
+  hr.appendChild(el("th", "", "Исполнитель"));
+  const th = document.createElement("th");
+  th.appendChild(monthHead());
+  hr.appendChild(th);
+  const thead = document.createElement("thead");
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  const body = document.createElement("tbody");
+  list.forEach((t) => {
+    const tr = document.createElement("tr");
+    if (t.late) tr.className = "late";
+    if (state.open === t.id) tr.classList.add("open");
+    tr.tabIndex = 0;
+    tr.setAttribute("role", "button");
+    tr.appendChild(cell(t.name));
+    tr.appendChild(cell(t.who, "who"));
+    const td = document.createElement("td");
+    td.appendChild(planBar(t));
+    tr.appendChild(td);
+    tr.addEventListener("click", () => toggle(t.id));
+    tr.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(t.id); }
+    });
+    body.appendChild(tr);
+    if (state.open === t.id) body.appendChild(planDetail(t));
+  });
+  table.appendChild(body);
+  wrap.appendChild(table);
+  const legend = el("div", "legend");
+  legend.appendChild(spanSw("navy", "срок по уставу"));
+  legend.appendChild(spanSw("risk", "отклонение в уставе"));
+  legend.appendChild(el("span", "", "Пунктир — ввод в ПЭ. Серая черта — срез " + M.shortDate(M.TODAY) + "."));
+  wrap.appendChild(legend);
+  return wrap;
+}
+function planBar(t) {
+  const box = el("div", "chart");
+  M.months().forEach((m) => {
+    const g = el("i", "gridline");
+    g.style.left = M.pos(m.start) + "%";
+    box.appendChild(g);
+  });
+  const a = M.pos(t.start);
+  const b = M.pos(t.end);
+  if (t.risk && t.riskFrom) {
+    paint(box, a, M.pos(t.riskFrom), "navy");
+    paint(box, M.pos(t.riskFrom), b, "risk");
+  } else {
+    paint(box, a, b, t.risk ? "risk" : "navy");
+  }
+  const today = el("i", "mark today");
+  today.style.left = M.pos(M.TODAY) + "%";
+  box.appendChild(today);
+  const comm = el("i", "mark");
+  comm.style.left = M.pos(M.COMMISSION) + "%";
+  box.appendChild(comm);
+  return box;
+}
+function paint(box, a, b, cls) {
+  const bar = el("i", "bar " + cls);
+  bar.style.left = a + "%";
+  bar.style.width = Math.max(0.5, b - a) + "%";
+  box.appendChild(bar);
+}
+function planDetail(t) {
+  const tr = document.createElement("tr");
+  const td = document.createElement("td");
+  td.colSpan = 3;
+  const box = el("div", "detail");
+  const finish = t.id === "ops" ? "15.05.30, на графике виден старт" : M.shortDate(t.end);
+  box.appendChild(el("div", "", "По уставу: " + M.shortDate(t.start) + " — " + finish + "."));
+  if (t.risk && t.riskFrom) {
+    box.appendChild(el("div", "", "Оранжевый хвост — с 28.04.25, даты старта поверки. От неё зависит запуск штрафования."));
+  } else if (t.risk) {
+    box.appendChild(el("div", "", "В уставе задача выделена как отклонение."));
+  }
+  if (t.zakup) {
+    const jump = el("button", "tag");
+    jump.type = "button";
+    jump.textContent = "Открыть в плане закупок";
+    jump.addEventListener("click", (e) => { e.stopPropagation(); follow("zakupki/" + t.zakup); });
+    box.appendChild(jump);
+  }
+  td.appendChild(box);
+  tr.appendChild(td);
+  return tr;
+}
+function contracts(list) {
+  const wrap = el("div");
+  const table = document.createElement("table");
+  const hr = document.createElement("tr");
+  ["ТРУ", "Контрагент", "Договор", "Потребность", "Прогноз"].forEach((t) => hr.appendChild(el("th", "", t)));
+  const thead = document.createElement("thead");
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  const body = document.createElement("tbody");
+  list.forEach((r) => {
+    const tr = document.createElement("tr");
+    if (!r.contract && r.state !== "procedure") tr.className = "late";
+    if (state.open === r.id) tr.classList.add("open");
+    tr.tabIndex = 0;
+    tr.setAttribute("role", "button");
+    tr.appendChild(cell(r.name));
+    tr.appendChild(cell(r.who, "who"));
+    const status = r.contract ? "Заключён" : r.state === "procedure" ? "Идёт процедура" : "Заявка не подана";
+    const tone = r.contract ? "ok" : r.state === "procedure" ? "" : "bad";
+    tr.appendChild(cell(status, tone ? "chip " + tone : "who"));
+    tr.appendChild(cell(M.shortDate(r.need)));
+    tr.appendChild(cell(M.shortDate(r.forecastIso), r.slip > 0 ? "chip bad" : ""));
+    tr.addEventListener("click", () => toggle(r.id));
+    tr.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(r.id); }
+    });
+    body.appendChild(tr);
+    if (state.open === r.id) body.appendChild(detailRow(r, 5));
+  });
+  table.appendChild(body);
+  wrap.appendChild(table);
+  return wrap;
+}
+function monthHead() {
+  const box = el("div");
+  const years = el("div", "months");
+  const y4 = el("span", "", "2024");
+  y4.style.flex = "4";
+  const y5 = el("span", "", "2025");
+  y5.style.flex = "9";
+  years.appendChild(y4);
+  years.appendChild(y5);
+  box.appendChild(years);
+  const mh = el("div", "months letters");
+  M.months().forEach((m) => mh.appendChild(el("span", "", m.label.slice(0, 1).toUpperCase())));
+  box.appendChild(mh);
+  return box;
+}
+function gantt(list) {
+  const wrap = el("div");
+  const table = document.createElement("table");
+  table.className = "gantt";
+  const thead = document.createElement("thead");
+  const hr = document.createElement("tr");
+  hr.appendChild(el("th", "", "Задача"));
+  hr.appendChild(el("th", "", "Исполнитель"));
+  const th = document.createElement("th");
+  th.appendChild(monthHead());
+  hr.appendChild(th);
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  const body = document.createElement("tbody");
+  list.forEach((r) => {
+    const tr = document.createElement("tr");
+    if (r.late) tr.className = "late";
+    if (state.open === r.id) tr.classList.add("open");
+    tr.tabIndex = 0;
+    tr.setAttribute("role", "button");
+    tr.setAttribute("aria-expanded", String(state.open === r.id));
+    tr.appendChild(cell(r.name));
+    tr.appendChild(cell(r.who, "who"));
+    const td = document.createElement("td");
+    td.appendChild(bar(r));
+    tr.appendChild(td);
+    tr.addEventListener("click", () => toggle(r.id));
+    tr.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(r.id); }
+    });
+    body.appendChild(tr);
+    if (state.open === r.id) body.appendChild(detailRow(r, 3));
+  });
+  table.appendChild(body);
+  wrap.appendChild(table);
+  const legend = el("div", "legend");
+  legend.appendChild(spanSw("navy", "срок по плану"));
+  legend.appendChild(spanSw("late", "позже даты"));
+  legend.appendChild(spanSw("miss", "заявку не подали"));
+  legend.appendChild(el("span", "", "Пунктир — ввод в ПЭ " + M.shortDate(M.COMMISSION) + ". Серая черта — срез " + M.shortDate(M.TODAY) + "."));
+  wrap.appendChild(legend);
+  return wrap;
+}
+
+function spanSw(cls, text) {
+  const s = el("span");
+  const i = el("i", "sw " + cls);
+  const fills = { navy: "var(--navy)", done: "var(--green)", risk: "#e8892c", miss: "repeating-linear-gradient(90deg, #f3c1be, #f3c1be 3px, transparent 3px, transparent 5px)" };
+  i.style.background = fills[cls] || "var(--red)";
+  s.appendChild(i);
+  s.append(text);
+  return s;
+}
+
+function bar(r) {
+  const box = el("div", "chart");
+  M.months().forEach((m) => {
+    const g = el("i", "gridline");
+    g.style.left = M.pos(m.start) + "%";
+    box.appendChild(g);
+  });
+  if (r.state === "notStarted") {
+    const missed = el("i", "bar miss");
+    missed.style.left = M.pos(r.requiredIso) + "%";
+    missed.style.width = Math.max(0.8, M.pos(M.TODAY) - M.pos(r.requiredIso)) + "%";
+    box.appendChild(missed);
+    const red = el("i", "bar late");
+    red.style.left = M.pos(M.TODAY) + "%";
+    red.style.width = Math.max(0.8, M.pos(r.forecastIso) - M.pos(M.TODAY)) + "%";
+    box.appendChild(red);
+  } else {
+    const planned = el("i", "bar navy");
+    planned.style.left = M.pos(r.charterStart) + "%";
+    planned.style.width = Math.max(0.8, M.pos(r.need) - M.pos(r.charterStart)) + "%";
+    box.appendChild(planned);
+    if (r.late) {
+      const red = el("i", "bar late");
+      red.style.left = M.pos(r.need) + "%";
+      red.style.width = Math.max(0.8, M.pos(r.forecastIso) - M.pos(r.need)) + "%";
+      box.appendChild(red);
+    }
+  }
+  const need = el("i", "need");
+  need.style.left = M.pos(r.need) + "%";
+  need.title = "Дата потребности " + M.shortDate(r.need);
+  box.appendChild(need);
+  const today = el("i", "mark today");
+  today.style.left = M.pos(M.TODAY) + "%";
+  box.appendChild(today);
+  const comm = el("i", "mark");
+  comm.style.left = M.pos(M.COMMISSION) + "%";
+  box.appendChild(comm);
+  return box;
+}
+
+function execution(list, s) {
+  const wrap = el("div");
+  const funnel = el("div", "funnel");
+  funnel.appendChild(el("div", "cap", "Исполнение бюджета — поставка. Договор и оплата показывают шаг, но в исполнение не входят. Суммы строк в уставе не выделены, шкала — по числу строк. Стоимость всего проекта — " + M.PROJECT_COST + "."));
+  const scale = s.total || 1;
+  [
+    ["Строк закупки", s.total, "all"],
+    ["Договор заключён", s.contract, "c"],
+    ["Оплачено", s.paid, "p"],
+    ["Поставлено", s.delivered, "d"],
+  ].forEach(([label, value, cls]) => {
+    funnel.appendChild(el("i", "", label));
+    const track = el("div", "track");
+    const fill = el("div", "fill " + cls);
+    fill.style.width = (value / scale * 100) + "%";
+    track.appendChild(fill);
+    funnel.appendChild(track);
+    funnel.appendChild(el("b", "", String(value)));
+  });
+  wrap.appendChild(funnel);
+  const table = document.createElement("table");
+  const hr = document.createElement("tr");
+  ["ТРУ", "Кто", "Договор", "Оплата", "Поставлено", "Прогноз", "К дате"].forEach((t) => hr.appendChild(el("th", "", t)));
+  const thead = document.createElement("thead");
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  const body = document.createElement("tbody");
+  list.forEach((r) => {
+    const tr = document.createElement("tr");
+    if (r.late) tr.className = "late";
+    tr.tabIndex = 0;
+    tr.setAttribute("role", "button");
+    tr.appendChild(cell(r.name));
+    tr.appendChild(cell(r.who, "who"));
+    tr.appendChild(gate(r.contract));
+    tr.appendChild(gate(r.paid));
+    tr.appendChild(gate(r.delivered));
+    tr.appendChild(cell(M.shortDate(r.forecastIso)));
+    const slip = r.slip > 0 ? "+" + r.slip + " дн" : "в срок";
+    tr.appendChild(cell(slip, "chip " + (r.slip > 0 ? "bad" : "ok")));
+    tr.addEventListener("click", () => toggle(r.id));
+    tr.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(r.id); }
+    });
+    body.appendChild(tr);
+    if (state.open === r.id) body.appendChild(detailRow(r, 7));
+  });
+  table.appendChild(body);
+  wrap.appendChild(table);
+  return wrap;
+}
+
+function gate(on) {
+  return cell(on ? "да" : "нет", on ? "on" : "off");
+}
+function cell(text, cls) {
+  const td = document.createElement("td");
+  if (cls) td.className = cls;
+  td.textContent = text;
+  return td;
+}
+function detailRow(r, span) {
+  const tr = document.createElement("tr");
+  const td = document.createElement("td");
+  td.colSpan = span;
+  const box = el("div", "detail");
+  const pay = r.pay === "advance" ? "Аванс до отгрузки" : r.pay === "prepay" ? "Предоплата до выдачи" : "Оплата после приёмки, дату не двигает";
+  box.appendChild(el("div", "", "Дата заявки " + M.shortDate(r.requiredIso) + " = потребность " + M.shortDate(r.need) + " − " + r.lead + " к.д. поставки" + (r.pay === "post" ? "" : " − 3 р.д. оплаты") + " − " + r.norm + " р.д. (" + r.methodTitle + ")."));
+  box.appendChild(el("div", "", "В плане проекта задача стартует " + M.shortDate(r.charterStart) + ". " + pay + "."));
+  if (r.cause) box.appendChild(el("div", "", r.cause));
+  box.appendChild(el("div", "who", r.source));
+  td.appendChild(box);
+  tr.appendChild(td);
+  return tr;
+}
+function toggle(id) {
+  state.open = state.open === id ? null : id;
+  render();
+}
+function setView(view) {
+  state.view = view;
+  state.open = null;
+  render();
+}
+const ORDER = ["proekt", "zakupki", "dogovory", "platezhi", "uvedomleniya"];
+document.querySelectorAll(".nav button").forEach((btn) => {
+  btn.addEventListener("click", () => setView(btn.dataset.view));
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+  if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+  const i = ORDER.indexOf(state.view);
+  const step = e.key === "ArrowRight" ? 1 : -1;
+  setView(ORDER[(i + step + ORDER.length) % ORDER.length]);
+});
+readHash();
+render();
+</script>
+</body>
+</html>
