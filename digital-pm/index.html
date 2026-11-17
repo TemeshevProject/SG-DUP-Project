@@ -41,7 +41,7 @@
   .nav button {
     display: block; width: 100%; text-align: left;
     background: transparent; border: 0; color: #fff;
-    border-radius: 8px; padding: 10px 14px; margin: 2px 0; font-size: 14px;
+    border-radius: 8px; padding: 8px 14px; margin: 1px 0; font-size: 13.5px;
   }
   .nav button[aria-current="page"] { background: var(--pill); font-weight: 600; }
   .nav button:focus-visible, .switch button:focus-visible, tr[role="button"]:focus-visible {
@@ -128,6 +128,18 @@
   .chip.bad { color: var(--red); }
   .on { color: var(--green); font-weight: 650; }
   .off { color: #b0bac4; }
+  .queue { display: flex; flex-wrap: wrap; gap: 8px; }
+  .qitem { flex: 1 1 210px; text-align: left; background: white; border: 0; border-radius: 12px; padding: 10px 12px; box-shadow: var(--shadow); white-space: normal; }
+  .qitem.bad { box-shadow: inset 3px 0 0 var(--red), var(--shadow); }
+  .qitem b { display: block; font-size: 13px; }
+  .qitem span, .qitem small { display: block; color: var(--muted); font-size: 12px; }
+  .editor { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .editor label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+  .editor input, .editor select, .pack input, .pack select { font: inherit; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; background: white; }
+  .pack { background: white; border-radius: 14px; padding: 12px 14px; box-shadow: var(--shadow); margin-top: 12px; }
+  .pack p { margin: 4px 0 8px; color: var(--muted); font-size: 13px; }
+  .risks { display: flex; flex-direction: column; gap: 10px; }
+  .decision { margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -138,6 +150,8 @@
     <button type="button" data-view="zakupki">План закупок</button>
     <button type="button" data-view="dogovory">Расходные договоры</button>
     <button type="button" data-view="platezhi">Платежи</button>
+    <button type="button" data-view="budget">Бюджет закупок</button>
+    <button type="button" data-view="risk">Реестр рисков</button>
     <button type="button" data-view="uvedomleniya">Уведомления</button>
     <div class="spacer"></div>
     <div class="src">Устав 1.05 от 22.05.2025<br>Правила закупок</div>
@@ -163,8 +177,16 @@
 </div>
 <script>
 const M = window.DigitalPm;
-const state = { view: "proekt", open: null };
+const state = { view: "proekt", open: null, edits: {}, drafts: [], seq: 1, decisions: {} };
 const VIEW_ALIAS = { gantt: "zakupki", ispolnenie: "platezhi" };
+const VIEWS = ["proekt", "zakupki", "dogovory", "platezhi", "budget", "risk", "uvedomleniya"];
+function pack() { return M.control(state.edits, state.drafts); }
+function setEdit(id, patch) {
+  const draft = state.drafts.find((item) => item.id === id);
+  if (draft) Object.assign(draft, patch);
+  else state.edits[id] = Object.assign({}, state.edits[id], patch);
+  render();
+}
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -175,7 +197,7 @@ function el(tag, cls, text) {
 function readHash() {
   const [raw, id] = location.hash.replace("#", "").split("/");
   const view = VIEW_ALIAS[raw] || raw;
-  const known = ["proekt", "zakupki", "dogovory", "platezhi", "uvedomleniya"];
+  const known = VIEWS;
   state.view = known.indexOf(view) >= 0 ? view : "proekt";
   state.open = id || null;
 }
@@ -185,17 +207,18 @@ function writeHash() {
 }
 
 function render() {
-  const list = M.rows();
-  const plan = M.planTasks();
-  const s = M.summary(list);
-  const notesData = M.notices(list);
+  const data = pack();
+  const list = data.list;
+  const plan = data.plan;
+  const s = data.summary;
+  const notesData = data.notices;
   document.getElementById("sub").textContent =
     "Срез " + M.shortDate(M.TODAY) + " · ввод в ПЭ " + M.shortDate(M.COMMISSION) + " · " + M.PROJECT_COST;
   document.querySelectorAll(".nav button").forEach((btn) => {
     if (btn.dataset.view === state.view) btn.setAttribute("aria-current", "page");
     else btn.removeAttribute("aria-current");
   });
-  document.querySelector(".workspace").classList.toggle("solo", state.view === "uvedomleniya");
+  document.querySelector(".workspace").classList.toggle("solo", state.view === "uvedomleniya" || state.view === "risk");
 
   const kpis = document.getElementById("kpis");
   kpis.replaceChildren();
@@ -208,10 +231,15 @@ function render() {
 
   const panel = document.getElementById("panel");
   panel.replaceChildren();
+  if (state.view !== "uvedomleniya") panel.appendChild(actionQueue(data.queue));
   if (state.view === "proekt") panel.appendChild(planGantt(plan));
-  else if (state.view === "zakupki") panel.appendChild(gantt(list));
-  else if (state.view === "dogovory") panel.appendChild(contracts(list));
+  else if (state.view === "zakupki") {
+    panel.appendChild(gantt(list));
+    panel.appendChild(packageBox());
+  } else if (state.view === "dogovory") panel.appendChild(contracts(list));
   else if (state.view === "platezhi") panel.appendChild(execution(list, s));
+  else if (state.view === "budget") panel.appendChild(budgetView(list, data.budget));
+  else if (state.view === "risk") panel.appendChild(riskView(data.risks));
   else panel.appendChild(noticeBoard(notesData));
 
   const notes = document.getElementById("notes");
@@ -220,6 +248,26 @@ function render() {
   writeHash();
 }
 
+function actionQueue(items) {
+  const row = el("div", "queue");
+  if (!items.length) {
+    const empty = el("div", "qitem");
+    empty.appendChild(el("b", "", "Очередь пуста"));
+    empty.appendChild(el("span", "", "На срезе нет шага, который требует руки"));
+    row.appendChild(empty);
+    return row;
+  }
+  items.forEach((item) => {
+    const b = el("button", "qitem" + (item.tone ? " " + item.tone : ""));
+    b.type = "button";
+    b.appendChild(el("b", "", item.title));
+    b.appendChild(el("span", "", item.text));
+    b.appendChild(el("small", "", item.who + " · до " + item.due));
+    b.addEventListener("click", () => follow(item.go));
+    row.appendChild(b);
+  });
+  return row;
+}
 function kpiCards(list, plan, s, notesData) {
   if (state.view === "proekt") {
     return [
@@ -253,6 +301,26 @@ function kpiCards(list, plan, s, notesData) {
       [String(s.paid), "строк оплачено"],
       [String(s.delivered), "поставлено — исполнение"],
       [String(s.late), "прогноз позже даты", s.late ? "bad" : ""],
+    ];
+  }
+  if (state.view === "budget") {
+    const b = pack().budget;
+    return [
+      ["26,1 млрд", "потолок проекта"],
+      [String(b.filled), "строк с лимитом"],
+      [String(b.open), "лимит не утверждён", b.open ? "bad" : ""],
+      [b.filled ? String(b.sum) : "—", b.over ? "сумма выше потолка" : "сумма лимитов", b.over ? "bad" : ""],
+    ];
+  }
+  if (state.view === "risk") {
+    const risks = pack().risks;
+    const high = risks.filter((r) => r.level === "высокий").length;
+    const decided = risks.filter((r) => state.decisions[r.id]).length;
+    return [
+      [String(risks.length), "рисков в реестре"],
+      [String(high), "высоких", high ? "bad" : ""],
+      [String(risks.length - decided), "без решения", risks.length - decided ? "bad" : ""],
+      [String(decided), "решение записано"],
     ];
   }
   return [
@@ -339,6 +407,12 @@ function planBar(t) {
   } else {
     paint(box, a, b, t.risk ? "risk" : "navy");
   }
+  if (t.moved) {
+    const base = el("i", "need");
+    base.style.left = M.pos(t.baselineEnd) + "%";
+    base.title = "Финиш по уставу " + M.shortDate(t.baselineEnd);
+    box.appendChild(base);
+  }
   const today = el("i", "mark today");
   today.style.left = M.pos(M.TODAY) + "%";
   box.appendChild(today);
@@ -366,6 +440,10 @@ function planDetail(t) {
     box.appendChild(el("div", "", "В уставе задача выделена как отклонение."));
   }
   if (t.zakup) {
+    const form = el("div", "editor");
+    form.appendChild(field("Дата потребности", "date", t.end, (value) => setEdit(t.zakup, { need: value })));
+    box.appendChild(form);
+    box.appendChild(el("div", "who", t.moved ? "Финиш по уставу " + M.shortDate(t.baselineEnd) + ". Текущая дата ушла в связанную закупку." : "Дата потребности связанной закупки совпадает с финишем по уставу."));
     const jump = el("button", "tag");
     jump.type = "button";
     jump.textContent = "Открыть в плане закупок";
@@ -588,11 +666,168 @@ function detailRow(r, span) {
   const pay = r.pay === "advance" ? "Аванс до отгрузки" : r.pay === "prepay" ? "Предоплата до выдачи" : "Оплата после приёмки, дату не двигает";
   box.appendChild(el("div", "", "Дата заявки " + M.shortDate(r.requiredIso) + " = потребность " + M.shortDate(r.need) + " − " + r.lead + " к.д. поставки" + (r.pay === "post" ? "" : " − 3 р.д. оплаты") + " − " + r.norm + " р.д. (" + r.methodTitle + ")."));
   box.appendChild(el("div", "", "В плане проекта задача стартует " + M.shortDate(r.charterStart) + ". " + pay + "."));
+  if (r.causeTitle) box.appendChild(el("div", "", "Причина: " + r.causeTitle + "."));
   if (r.cause) box.appendChild(el("div", "", r.cause));
-  box.appendChild(el("div", "who", r.source));
+  if (r.response) box.appendChild(el("div", "", "Как поступить: " + r.response));
+  if (!r.delivered && r.scenarioToday) {
+    box.appendChild(el("div", "", "Если подать заявку сегодня: финиш " + M.shortDate(r.scenarioToday) + ". Если подать в дату старта плана (" + M.shortDate(r.charterStart) + "): финиш " + M.shortDate(r.scenarioPlan) + "."));
+  }
+  box.appendChild(el("div", "who", r.source || ""));
+  box.appendChild(lineEditor(r));
   td.appendChild(box);
   tr.appendChild(td);
   return tr;
+}
+function field(label, type, value, onChange, options) {
+  const wrap = el("label", "", label);
+  let input;
+  if (type === "select") {
+    input = document.createElement("select");
+    options.forEach((opt) => {
+      const o = document.createElement("option");
+      o.value = opt[0];
+      o.textContent = opt[1];
+      if (opt[0] === value) o.selected = true;
+      input.appendChild(o);
+    });
+  } else {
+    input = document.createElement("input");
+    input.type = type;
+    if (type === "number") input.min = "0";
+    if (value != null && value !== "") input.value = value;
+    else input.placeholder = "не задан";
+  }
+  input.addEventListener("change", () => onChange(input.value));
+  input.addEventListener("click", (e) => e.stopPropagation());
+  wrap.appendChild(input);
+  return wrap;
+}
+function lineEditor(r) {
+  const form = el("div", "editor");
+  form.appendChild(field("Потребность", "date", r.need || "", (value) => setEdit(r.id, { need: value })));
+  form.appendChild(field("Способ", "select", r.method, (value) => setEdit(r.id, { method: value }), [
+    ["zcp", "Запрос цен, 35 р.д."],
+    ["zcpComplex", "Сложное ТЗ, 40 р.д."],
+    ["oi", "Один источник, 23 р.д."],
+    ["invoice", "Счёт, 3 р.д."],
+  ]));
+  form.appendChild(field("Оплата", "select", r.pay, (value) => setEdit(r.id, { pay: value }), [
+    ["advance", "Аванс до отгрузки"],
+    ["prepay", "Предоплата до выдачи"],
+    ["post", "После приёмки"],
+  ]));
+  form.appendChild(field("Статус", "select", r.state, (value) => setEdit(r.id, { state: value }), [
+    ["notStarted", "Заявку не подали"],
+    ["procedure", "Идёт процедура"],
+    ["transit", "В пути"],
+    ["service", "Оказывается"],
+    ["slip", "Сдвиг подрядчика"],
+    ["done", "Принято"],
+  ]));
+  if (r.state === "slip") {
+    form.appendChild(field("Сдвиг, календарных дней", "number", r.slipCal || 0, (value) => setEdit(r.id, { slipCal: Number(value) })));
+  }
+  form.appendChild(field("Лимит, тенге", "number", r.limit == null ? "" : r.limit, (value) => setEdit(r.id, { limit: value === "" ? null : Number(value) })));
+  return form;
+}
+function packageBox() {
+  const box = el("div", "pack");
+  box.appendChild(el("b", "", "Пакет документов"));
+  box.appendChild(el("p", "", "Устав 1.05, план проекта и правила закупок уже разобраны в семь строк. Новая строка из пакета встаёт черновиком: дату потребности подтверждает менеджер, сумма не подставляется."));
+  const form = el("div", "editor");
+  const name = document.createElement("input");
+  name.placeholder = "Наименование ТРУ";
+  const who = document.createElement("input");
+  who.placeholder = "Контрагент";
+  const add = el("button", "tag");
+  add.type = "button";
+  add.textContent = "Добавить черновик";
+  add.addEventListener("click", () => {
+    const title = name.value.trim();
+    if (!title) return;
+    state.drafts.push({
+      id: "draft-" + state.seq,
+      name: title,
+      who: who.value.trim() || "Не назван",
+      method: "zcp",
+      pay: "post",
+      lead: 15,
+      need: "",
+      charterStart: M.TODAY,
+      state: "notStarted",
+      source: "Черновик из пакета документов",
+    });
+    state.seq += 1;
+    state.open = state.drafts[state.drafts.length - 1].id;
+    name.value = "";
+    who.value = "";
+    render();
+  });
+  form.appendChild(name);
+  form.appendChild(who);
+  form.appendChild(add);
+  box.appendChild(form);
+  return box;
+}
+function budgetView(list, b) {
+  const wrap = el("div");
+  const note = el("div", "pack");
+  note.appendChild(el("b", "", "Бюджет закупок с даты устава"));
+  note.appendChild(el("p", "", "Потолок проекта " + b.ceilingText + ". Суммы строк в уставе не выделены, поэтому лимит каждой строки утверждает руководитель. Пока лимита нет, освоение считается числом строк, а не тенге."));
+  if (b.filled) note.appendChild(el("p", "", "Утверждено " + M.formatTenge(b.sum) + (b.over ? ". Сумма выше потолка проекта." : ".")));
+  wrap.appendChild(note);
+  const table = document.createElement("table");
+  const hr = document.createElement("tr");
+  ["ТРУ", "Статус", "Лимит"].forEach((t) => hr.appendChild(el("th", "", t)));
+  const head = document.createElement("thead");
+  head.appendChild(hr);
+  table.appendChild(head);
+  const body = document.createElement("tbody");
+  list.forEach((r) => {
+    const tr = document.createElement("tr");
+    tr.appendChild(cell(r.name));
+    tr.appendChild(cell(r.limit == null ? "не утверждён" : "утверждён", r.limit == null ? "chip bad" : "chip ok"));
+    const td = document.createElement("td");
+    td.appendChild(field("", "number", r.limit == null ? "" : r.limit, (value) => setEdit(r.id, { limit: value === "" ? null : Number(value) })));
+    tr.appendChild(td);
+    body.appendChild(tr);
+  });
+  table.appendChild(body);
+  wrap.appendChild(table);
+  return wrap;
+}
+function riskView(items) {
+  const wrap = el("div", "risks");
+  items.forEach((risk) => {
+    const card = el("article", "note " + risk.tone);
+    card.appendChild(el("div", "tag", risk.level + " · " + risk.cause));
+    card.appendChild(el("p", "", risk.title));
+    card.appendChild(el("p", "", risk.text));
+    card.appendChild(el("p", "", "Как поступить: " + risk.response));
+    const decision = state.decisions[risk.id];
+    card.appendChild(el("p", "", decision ? "Решение: " + decisionLabel(decision) : "Решение ещё не записано."));
+    const form = el("div", "editor decision");
+    form.appendChild(field("Решение", "select", decision || "", (value) => {
+      state.decisions[risk.id] = value;
+      render();
+    }, [
+      ["", "не выбрано"],
+      ["accept", "Принять и следить"],
+      ["escalate", "Эскалировать"],
+      ["move", "Сдвинуть веху"],
+    ]));
+    const open = el("button", "tag");
+    open.type = "button";
+    open.textContent = "Открыть строку";
+    open.addEventListener("click", () => follow(risk.go));
+    form.appendChild(open);
+    card.appendChild(form);
+    wrap.appendChild(card);
+  });
+  return wrap;
+}
+function decisionLabel(value) {
+  return { accept: "принять и следить", escalate: "эскалировать", move: "сдвинуть веху" }[value] || value;
 }
 function toggle(id) {
   state.open = state.open === id ? null : id;
@@ -603,7 +838,7 @@ function setView(view) {
   state.open = null;
   render();
 }
-const ORDER = ["proekt", "zakupki", "dogovory", "platezhi", "uvedomleniya"];
+const ORDER = VIEWS;
 document.querySelectorAll(".nav button").forEach((btn) => {
   btn.addEventListener("click", () => setView(btn.dataset.view));
 });
