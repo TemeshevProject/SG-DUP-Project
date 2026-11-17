@@ -181,11 +181,11 @@ const state = { view: "proekt", open: null, edits: {}, drafts: [], seq: 1, decis
 const VIEW_ALIAS = { gantt: "zakupki", ispolnenie: "platezhi" };
 const VIEWS = ["proekt", "zakupki", "dogovory", "platezhi", "budget", "risk", "uvedomleniya"];
 function pack() { return M.control(state.edits, state.drafts); }
-function setEdit(id, patch) {
+function setEdit(id, patch, silent) {
   const draft = state.drafts.find((item) => item.id === id);
   if (draft) Object.assign(draft, patch);
   else state.edits[id] = Object.assign({}, state.edits[id], patch);
-  render();
+  if (!silent) render();
 }
 
 function el(tag, cls, text) {
@@ -246,6 +246,8 @@ function render() {
   notes.replaceChildren();
   notesData.forEach((n) => notes.appendChild(card(n.tone, n.tag, n.text, n.go)));
   writeHash();
+  const opened = document.querySelector("tr.open, tr.late.open");
+  if (opened) opened.scrollIntoView({ block: "center" });
 }
 
 function actionQueue(items) {
@@ -307,9 +309,9 @@ function kpiCards(list, plan, s, notesData) {
     const b = pack().budget;
     return [
       ["26,1 млрд", "потолок проекта"],
-      [String(b.filled), "строк с лимитом"],
-      [String(b.open), "лимит не утверждён", b.open ? "bad" : ""],
-      [b.filled ? String(b.sum) : "—", b.over ? "сумма выше потолка" : "сумма лимитов", b.over ? "bad" : ""],
+      [String(list.length), "лотов в бюджете"],
+      [String(b.open), "без лимита", b.open ? "bad" : ""],
+      [b.filled ? (b.sum / 1e9).toFixed(1).replace(".", ",") + " млрд" : "—", b.over ? "выше потолка" : "бюджет лотов", b.over ? "bad" : ""],
     ];
   }
   if (state.view === "risk") {
@@ -439,15 +441,18 @@ function planDetail(t) {
   } else if (t.risk) {
     box.appendChild(el("div", "", "В уставе задача выделена как отклонение."));
   }
-  if (t.zakup) {
+  if (t.linked && t.linked.length) {
     const form = el("div", "editor");
-    form.appendChild(field("Дата потребности", "date", t.end, (value) => setEdit(t.zakup, { need: value })));
+    form.appendChild(field("Дата потребности лотов", "date", t.end, (value) => {
+      t.linked.forEach((id) => setEdit(id, { need: value }, true));
+      render();
+    }));
     box.appendChild(form);
-    box.appendChild(el("div", "who", t.moved ? "Финиш по уставу " + M.shortDate(t.baselineEnd) + ". Текущая дата ушла в связанную закупку." : "Дата потребности связанной закупки совпадает с финишем по уставу."));
+    box.appendChild(el("div", "who", "К задаче привязано лотов: " + t.linked.length + ". Новая дата двигает каждый из них и пересчитывает заявку."));
     const jump = el("button", "tag");
     jump.type = "button";
     jump.textContent = "Открыть в плане закупок";
-    jump.addEventListener("click", (e) => { e.stopPropagation(); follow("zakupki/" + t.zakup); });
+    jump.addEventListener("click", (e) => { e.stopPropagation(); follow("zakupki/" + t.linked[0]); });
     box.appendChild(jump);
   }
   td.appendChild(box);
@@ -471,8 +476,8 @@ function contracts(list) {
     tr.setAttribute("role", "button");
     tr.appendChild(cell(r.name));
     tr.appendChild(cell(r.who, "who"));
-    const status = r.contract ? "Заключён" : r.state === "procedure" ? "Идёт процедура" : "Заявка не подана";
-    const tone = r.contract ? "ok" : r.state === "procedure" ? "" : "bad";
+    const status = r.state === "awaitPay" ? "Ждёт предоплату" : r.state === "unpaid" ? "Остаток не оплачен" : r.contract ? "Заключён" : r.state === "procedure" ? "Идёт процедура" : "Заявка не подана";
+    const tone = r.state === "awaitPay" || r.state === "unpaid" ? "bad" : r.contract ? "ok" : r.state === "procedure" ? "" : "bad";
     tr.appendChild(cell(status, tone ? "chip " + tone : "who"));
     tr.appendChild(cell(M.shortDate(r.need)));
     tr.appendChild(cell(M.shortDate(r.forecastIso), r.slip > 0 ? "chip bad" : ""));
@@ -505,7 +510,7 @@ function monthHead() {
 function gantt(list) {
   const wrap = el("div");
   const table = document.createElement("table");
-  table.className = "gantt";
+  table.className = "gantt dense";
   const thead = document.createElement("thead");
   const hr = document.createElement("tr");
   hr.appendChild(el("th", "", "Задача"));
@@ -600,7 +605,7 @@ function bar(r) {
 function execution(list, s) {
   const wrap = el("div");
   const funnel = el("div", "funnel");
-  funnel.appendChild(el("div", "cap", "Исполнение бюджета — поставка. Договор и оплата показывают шаг, но в исполнение не входят. Суммы строк в уставе не выделены, шкала — по числу строк. Стоимость всего проекта — " + M.PROJECT_COST + "."));
+  funnel.appendChild(el("div", "cap", "Исполнение — это поставка. Договор и оплата показывают шаг, но в поставку не входят. Шкала считает строки. Деньги лотов — в бюджете закупок, потолок проекта " + M.PROJECT_COST + "."));
   const scale = s.total || 1;
   [
     ["Строк закупки", s.total, "all"],
@@ -719,8 +724,10 @@ function lineEditor(r) {
   form.appendChild(field("Статус", "select", r.state, (value) => setEdit(r.id, { state: value }), [
     ["notStarted", "Заявку не подали"],
     ["procedure", "Идёт процедура"],
+    ["awaitPay", "Ждёт предоплату"],
     ["transit", "В пути"],
     ["service", "Оказывается"],
+    ["unpaid", "Остаток не оплачен"],
     ["slip", "Сдвиг подрядчика"],
     ["done", "Принято"],
   ]));
@@ -733,7 +740,7 @@ function lineEditor(r) {
 function packageBox() {
   const box = el("div", "pack");
   box.appendChild(el("b", "", "Пакет документов"));
-  box.appendChild(el("p", "", "Устав 1.05, план проекта и правила закупок уже разобраны в семь строк. Новая строка из пакета встаёт черновиком: дату потребности подтверждает менеджер, сумма не подставляется."));
+  box.appendChild(el("p", "", "Устав задаёт проект и потолок. Лоты ниже — управленческая раскладка закупок и подрядов. Новая строка из пакета встаёт черновиком: дату и лимит подтверждает менеджер."));
   const form = el("div", "editor");
   const name = document.createElement("input");
   name.placeholder = "Наименование ТРУ";
@@ -773,7 +780,7 @@ function budgetView(list, b) {
   const wrap = el("div");
   const note = el("div", "pack");
   note.appendChild(el("b", "", "Бюджет закупок с даты устава"));
-  note.appendChild(el("p", "", "Потолок проекта " + b.ceilingText + ". Суммы строк в уставе не выделены, поэтому лимит каждой строки утверждает руководитель. Пока лимита нет, освоение считается числом строк, а не тенге."));
+  note.appendChild(el("p", "", "Потолок проекта " + b.ceilingText + ". Лимиты лотов — управленческая раскладка для контроля, не приложение к уставу. Освоение в тенге считается по заполненным лимитам, поставка по-прежнему считается фактом приёмки."));
   if (b.filled) note.appendChild(el("p", "", "Утверждено " + M.formatTenge(b.sum) + (b.over ? ". Сумма выше потолка проекта." : ".")));
   wrap.appendChild(note);
   const table = document.createElement("table");
