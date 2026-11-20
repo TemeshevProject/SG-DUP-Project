@@ -121,6 +121,7 @@
   .fill.c { background: var(--navy); }
   .fill.p { background: var(--gold); }
   .fill.d { background: var(--green); }
+  .fill.commit { background: #6d90c4; }
   .cap { grid-column: 1 / -1; color: var(--muted); font-size: 12.5px; line-height: 1.4; }
   .detail { padding: 4px 8px 12px; color: var(--ink); font-size: 13px; line-height: 1.45; }
   .chip { font-weight: 700; }
@@ -140,12 +141,42 @@
   .pack p { margin: 4px 0 8px; color: var(--muted); font-size: 13px; }
   .risks { display: flex; flex-direction: column; gap: 10px; }
   .decision { margin-top: 8px; }
+  .queuelabel { font-size: 12px; font-weight: 650; color: var(--muted); }
+  button.tag { margin-top: 8px; border: 0; background: #eef3fb; color: var(--navy); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; font-weight: 650; }
+  .cadence, .splitgrid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .splitgrid { grid-template-columns: 1fr 1fr; }
+  .sheet { background: white; border-radius: 14px; padding: 12px 14px 14px; box-shadow: var(--shadow); min-width: 0; }
+  .sheet h3 { margin: 0 0 4px; font-size: 14px; }
+  .sheet p { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+  .sheet ul { margin: 8px 0 0; padding: 0; list-style: none; }
+  .sheet li { border-top: 1px solid var(--line); }
+  .sheet li button { display: block; width: 100%; text-align: left; background: transparent; border: 0; padding: 7px 0; }
+  .sheet li b { display: block; font-size: 13px; font-weight: 650; }
+  .sheet li span { display: block; color: var(--muted); font-size: 12px; }
+  .moneyline { display: grid; grid-template-columns: 132px 1fr 92px; gap: 8px; align-items: center; margin-top: 8px; font-size: 13px; }
+  .moneyline b { text-align: right; font-variant-numeric: tabular-nums; }
+  @media (max-width: 1100px) {
+    .cadence, .splitgrid, .kpis { grid-template-columns: 1fr 1fr; }
+    .workspace { grid-template-columns: 1fr; }
+    .rail { display: none; }
+  }
+  @media (max-width: 720px) {
+    .app { grid-template-columns: 1fr; height: auto; }
+    aside.nav { flex-direction: row; flex-wrap: wrap; padding: 12px; }
+    .logo { width: 100%; padding: 0 8px 8px; }
+    .nav .spacer, .nav .src { display: none; }
+    .nav button { width: auto; }
+    .cadence, .splitgrid, .kpis { grid-template-columns: 1fr; }
+    .moneyline { grid-template-columns: 96px 1fr 72px; }
+    main { padding: 12px; }
+  }
 </style>
 </head>
 <body>
 <div class="app">
   <aside class="nav">
     <div class="logo">Цифровой ПМ</div>
+    <button type="button" data-view="staff">Штаб</button>
     <button type="button" data-view="proekt">План проекта</button>
     <button type="button" data-view="zakupki">План закупок</button>
     <button type="button" data-view="dogovory">Расходные договоры</button>
@@ -177,9 +208,9 @@
 </div>
 <script>
 const M = window.DigitalPm;
-const state = { view: "proekt", open: null, edits: {}, drafts: [], seq: 1, decisions: {} };
+const state = { view: "staff", open: null, edits: {}, drafts: [], seq: 1, decisions: {} };
 const VIEW_ALIAS = { gantt: "zakupki", ispolnenie: "platezhi" };
-const VIEWS = ["proekt", "zakupki", "dogovory", "platezhi", "budget", "risk", "uvedomleniya"];
+const VIEWS = ["staff", "proekt", "zakupki", "dogovory", "platezhi", "budget", "risk", "uvedomleniya"];
 function pack() { return M.control(state.edits, state.drafts); }
 function setEdit(id, patch, silent) {
   const draft = state.drafts.find((item) => item.id === id);
@@ -198,7 +229,7 @@ function readHash() {
   const [raw, id] = location.hash.replace("#", "").split("/");
   const view = VIEW_ALIAS[raw] || raw;
   const known = VIEWS;
-  state.view = known.indexOf(view) >= 0 ? view : "proekt";
+  state.view = known.indexOf(view) >= 0 ? view : "staff";
   state.open = id || null;
 }
 function writeHash() {
@@ -231,8 +262,9 @@ function render() {
 
   const panel = document.getElementById("panel");
   panel.replaceChildren();
-  if (state.view !== "uvedomleniya") panel.appendChild(actionQueue(data.queue));
-  if (state.view === "proekt") panel.appendChild(planGantt(plan));
+  if (state.view !== "uvedomleniya" && state.view !== "staff") panel.appendChild(actionQueue(data.queue));
+  if (state.view === "staff") panel.appendChild(staffView(data));
+  else if (state.view === "proekt") panel.appendChild(planGantt(plan));
   else if (state.view === "zakupki") {
     panel.appendChild(gantt(list));
     panel.appendChild(packageBox());
@@ -250,14 +282,216 @@ function render() {
   if (opened) opened.scrollIntoView({ block: "center" });
 }
 
+function shortMoney(value) {
+  if (!value) return "0";
+  return (value / 1e9).toFixed(1).replace(".", ",") + " млрд";
+}
+function moneyLine(label, value, ceiling, cls) {
+  const row = el("div", "moneyline");
+  row.appendChild(el("span", "", label));
+  const track = el("div", "track");
+  const fill = el("div", "fill " + cls);
+  fill.style.width = Math.max(0, Math.min(100, value / ceiling * 100)) + "%";
+  track.appendChild(fill);
+  row.appendChild(track);
+  row.appendChild(el("b", "", shortMoney(value)));
+  return row;
+}
+function staffView(data) {
+  const wrap = el("div");
+  wrap.style.display = "flex";
+  wrap.style.flexDirection = "column";
+  wrap.style.gap = "12px";
+  const m = data.money;
+  const cadence = el("div", "cadence");
+  cadence.appendChild(weekSheet(data.queue));
+  cadence.appendChild(monthSheet(m));
+  cadence.appendChild(gateSheet(data.plan));
+  wrap.appendChild(cadence);
+  wrap.appendChild(moneySheet(m));
+  wrap.appendChild(decisionSheet(data.risks));
+  const split = el("div", "splitgrid");
+  split.appendChild(exceptionSheet(
+    "Отклонения устава",
+    "Оранжевым остаются на плане проекта. Прогноз закупки сюда не переносится.",
+    data.plan.filter((t) => t.risk || t.moved).map((t) => ({
+      title: t.name,
+      meta: t.who + (t.moved ? " · база " + M.shortDate(t.baselineEnd) + " → " + M.shortDate(t.end) : " · отклонение в уставе"),
+      go: "proekt/" + t.id,
+    }))
+  ));
+  split.appendChild(exceptionSheet(
+    "Прогноз позже вехи",
+    "Считается по закупке: заявка, оплата аванса и срок подрядчика.",
+    data.list.filter((r) => r.late).map((r) => ({
+      title: r.name,
+      meta: (r.causeTitle || r.stage) + " · " + M.shortDate(r.forecastIso) + " · +" + r.slip + " дн",
+      go: "zakupki/" + r.id,
+    }))
+  ));
+  wrap.appendChild(split);
+  return wrap;
+}
+function weekSheet(queue) {
+  const sheet = el("article", "sheet");
+  sheet.appendChild(el("h3", "", "Неделя"));
+  sheet.appendChild(el("p", "", "Очередь владельцев. ДУП подаёт заявку, закупщик ведёт процедуру, финблок платит."));
+  const list = el("ul");
+  queue.slice(0, 5).forEach((item) => {
+    const li = document.createElement("li");
+    const b = el("button");
+    b.type = "button";
+    b.appendChild(el("b", "", item.title + " · " + item.who));
+    b.appendChild(el("span", "", item.text));
+    b.addEventListener("click", () => follow(item.go));
+    li.appendChild(b);
+    list.appendChild(li);
+  });
+  sheet.appendChild(list);
+  const more = el("button", "tag");
+  more.type = "button";
+  more.textContent = "Вся очередь в закупках";
+  more.addEventListener("click", () => follow("zakupki"));
+  sheet.appendChild(more);
+  return sheet;
+}
+function monthSheet(m) {
+  const sheet = el("article", "sheet");
+  sheet.appendChild(el("h3", "", "Месяц"));
+  sheet.appendChild(el("p", "", "Лимиты лотов " + shortMoney(m.lots) + " внутри потолка. Договор, оплата и поставка — три разные суммы."));
+  const list = el("ul");
+  [
+    ["Обязались договором", shortMoney(m.committed) + " · " + m.committedCount + " лотов"],
+    ["Оплачено", shortMoney(m.paid) + " · " + m.paidCount + " лотов"],
+    ["Поставлено", shortMoney(m.delivered) + " · " + m.deliveredCount + " лотов"],
+  ].forEach(([title, meta]) => {
+    const li = document.createElement("li");
+    li.appendChild(el("b", "", title));
+    li.appendChild(el("span", "", meta));
+    li.style.padding = "7px 0";
+    list.appendChild(li);
+  });
+  sheet.appendChild(list);
+  const more = el("button", "tag");
+  more.type = "button";
+  more.textContent = "Бюджет закупок";
+  more.addEventListener("click", () => follow("budget"));
+  sheet.appendChild(more);
+  return sheet;
+}
+function gateSheet(plan) {
+  const moved = plan.filter((t) => t.moved);
+  const charter = plan.filter((t) => t.risk);
+  const sheet = el("article", "sheet");
+  sheet.appendChild(el("h3", "", "Ворота устава"));
+  sheet.appendChild(el("p", "", "База заморожена. Сдвиг вехи виден отдельно от оранжевых отклонений устава."));
+  const list = el("ul");
+  const li = document.createElement("li");
+  li.style.padding = "7px 0";
+  li.appendChild(el("b", "", charter.length + " отклонения в уставе"));
+  li.appendChild(el("span", "", moved.length ? moved.length + " вех сдвинуты от базы" : "Вехи совпадают с базой"));
+  list.appendChild(li);
+  sheet.appendChild(list);
+  const more = el("button", "tag");
+  more.type = "button";
+  more.textContent = "План проекта";
+  more.addEventListener("click", () => follow("proekt"));
+  sheet.appendChild(more);
+  return sheet;
+}
+function moneySheet(m) {
+  const sheet = el("article", "sheet");
+  sheet.appendChild(el("h3", "", "Деньги на срезе"));
+  sheet.appendChild(el("p", "", "Потолок задаёт устав. Лимиты лотов — управленческая раскладка, не приложение к уставу. Поставка в исполнение входит, оплата — нет."));
+  sheet.appendChild(moneyLine("Потолок", m.ceiling, m.ceiling, "all"));
+  sheet.appendChild(moneyLine("Лимиты лотов", m.lots, m.ceiling, "c"));
+  sheet.appendChild(moneyLine("Обязались", m.committed, m.ceiling, "commit"));
+  sheet.appendChild(moneyLine("Оплачено", m.paid, m.ceiling, "p"));
+  sheet.appendChild(moneyLine("Поставлено", m.delivered, m.ceiling, "d"));
+  return sheet;
+}
+function decisionSheet(risks) {
+  const sheet = el("article", "sheet");
+  const open = risks.filter((risk) => !state.decisions[risk.id]).sort((a, b) => (a.level === "высокий" ? 0 : 1) - (b.level === "высокий" ? 0 : 1));
+  sheet.appendChild(el("h3", "", "Решение сегодня"));
+  sheet.appendChild(el("p", "", open.length ? "По каждому риску: принять, эскалировать или сдвинуть веху. Запись видна в реестре." : "На срезе решения записаны."));
+  open.slice(0, 4).forEach((risk) => sheet.appendChild(decisionCard(risk)));
+  if (open.length > 4) {
+    const more = el("button", "tag");
+    more.type = "button";
+    more.textContent = "Ещё " + (open.length - 4) + " в реестре";
+    more.addEventListener("click", () => follow("risk"));
+    sheet.appendChild(more);
+  }
+  return sheet;
+}
+function decisionCard(risk) {
+  const card = el("div", "note " + risk.tone);
+  card.style.marginTop = "8px";
+  card.appendChild(el("div", "tag", risk.level + " · " + risk.cause));
+  card.appendChild(el("p", "", risk.title));
+  card.appendChild(el("p", "", "Как поступить: " + risk.response));
+  card.appendChild(decisionForm(risk));
+  return card;
+}
+function decisionForm(risk) {
+  const decision = state.decisions[risk.id];
+  const form = el("div", "editor decision");
+  form.appendChild(field("Решение", "select", decision || "", (value) => {
+    if (value) state.decisions[risk.id] = value;
+    else delete state.decisions[risk.id];
+    render();
+  }, [
+    ["", "не выбрано"],
+    ["accept", "Принять и следить"],
+    ["escalate", "Эскалировать"],
+    ["move", "Сдвинуть веху"],
+  ]));
+  const open = el("button", "tag");
+  open.type = "button";
+  open.textContent = "Открыть строку";
+  open.addEventListener("click", () => follow(risk.go));
+  form.appendChild(open);
+  return form;
+}
+function exceptionSheet(title, text, rows) {
+  const sheet = el("article", "sheet");
+  sheet.appendChild(el("h3", "", title));
+  sheet.appendChild(el("p", "", text));
+  const list = el("ul");
+  if (!rows.length) {
+    const li = document.createElement("li");
+    li.style.padding = "7px 0";
+    li.appendChild(el("span", "", "На срезе пусто"));
+    list.appendChild(li);
+  }
+  rows.forEach((row) => {
+    const li = document.createElement("li");
+    const b = el("button");
+    b.type = "button";
+    b.appendChild(el("b", "", row.title));
+    b.appendChild(el("span", "", row.meta));
+    b.addEventListener("click", () => follow(row.go));
+    li.appendChild(b);
+    list.appendChild(li);
+  });
+  sheet.appendChild(list);
+  return sheet;
+}
 function actionQueue(items) {
+  const wrap = el("div");
+  wrap.style.display = "flex";
+  wrap.style.flexDirection = "column";
+  wrap.style.gap = "8px";
+  wrap.appendChild(el("div", "queuelabel", "Неделя · шаг и владелец"));
   const row = el("div", "queue");
   if (!items.length) {
     const empty = el("div", "qitem");
     empty.appendChild(el("b", "", "Очередь пуста"));
     empty.appendChild(el("span", "", "На срезе нет шага, который требует руки"));
     row.appendChild(empty);
-    return row;
+    wrap.appendChild(row);
+    return wrap;
   }
   items.forEach((item) => {
     const b = el("button", "qitem" + (item.tone ? " " + item.tone : ""));
@@ -268,9 +502,20 @@ function actionQueue(items) {
     b.addEventListener("click", () => follow(item.go));
     row.appendChild(b);
   });
-  return row;
+  wrap.appendChild(row);
+  return wrap;
 }
 function kpiCards(list, plan, s, notesData) {
+  if (state.view === "staff") {
+    const m = pack().money;
+    const open = pack().risks.filter((risk) => !state.decisions[risk.id]).length;
+    return [
+      [String(m.daysToCommission), "дней до ввода"],
+      [String(s.late), "прогноз позже вехи", s.late ? "bad" : ""],
+      [String(open), "без решения", open ? "bad" : ""],
+      [shortMoney(m.delivered), "поставлено"],
+    ];
+  }
   if (state.view === "proekt") {
     return [
       [String(plan.length), "задач в плане"],
@@ -390,7 +635,7 @@ function planGantt(list) {
   const legend = el("div", "legend");
   legend.appendChild(spanSw("navy", "срок по уставу"));
   legend.appendChild(spanSw("risk", "отклонение в уставе"));
-  legend.appendChild(el("span", "", "Пунктир — ввод в ПЭ. Серая черта — срез " + M.shortDate(M.TODAY) + "."));
+  legend.appendChild(el("span", "", "Пунктир — ввод в ПЭ. Серая черта — срез " + M.shortDate(M.TODAY) + ". Чёрная черта — финиш базы, если веха сдвинута."));
   wrap.appendChild(legend);
   return wrap;
 }
@@ -782,6 +1027,8 @@ function budgetView(list, b) {
   note.appendChild(el("b", "", "Бюджет закупок с даты устава"));
   note.appendChild(el("p", "", "Потолок проекта " + b.ceilingText + ". Лимиты лотов — управленческая раскладка для контроля, не приложение к уставу. Освоение в тенге считается по заполненным лимитам, поставка по-прежнему считается фактом приёмки."));
   if (b.filled) note.appendChild(el("p", "", "Утверждено " + M.formatTenge(b.sum) + (b.over ? ". Сумма выше потолка проекта." : ".")));
+  const m = pack().money;
+  note.appendChild(el("p", "", "Обязались договором " + M.formatTenge(m.committed) + ". Оплачено " + M.formatTenge(m.paid) + ". Поставлено " + M.formatTenge(m.delivered) + "."));
   wrap.appendChild(note);
   const table = document.createElement("table");
   const hr = document.createElement("tr");
@@ -805,6 +1052,22 @@ function budgetView(list, b) {
 }
 function riskView(items) {
   const wrap = el("div", "risks");
+  const journal = el("article", "sheet");
+  const recorded = items.filter((risk) => state.decisions[risk.id]);
+  journal.appendChild(el("h3", "", "Журнал решений"));
+  journal.appendChild(el("p", "", recorded.length ? "Решение, записанное на штабе или здесь, остаётся до конца сессии." : "Журнал пуст. Решение: принять, эскалировать или сдвинуть веху."));
+  if (recorded.length) {
+    const list = el("ul");
+    recorded.forEach((risk) => {
+      const li = document.createElement("li");
+      li.style.padding = "7px 0";
+      li.appendChild(el("b", "", risk.title));
+      li.appendChild(el("span", "", decisionLabel(state.decisions[risk.id]) + " · " + risk.cause));
+      list.appendChild(li);
+    });
+    journal.appendChild(list);
+  }
+  wrap.appendChild(journal);
   items.forEach((risk) => {
     const card = el("article", "note " + risk.tone);
     card.appendChild(el("div", "tag", risk.level + " · " + risk.cause));
@@ -813,22 +1076,7 @@ function riskView(items) {
     card.appendChild(el("p", "", "Как поступить: " + risk.response));
     const decision = state.decisions[risk.id];
     card.appendChild(el("p", "", decision ? "Решение: " + decisionLabel(decision) : "Решение ещё не записано."));
-    const form = el("div", "editor decision");
-    form.appendChild(field("Решение", "select", decision || "", (value) => {
-      state.decisions[risk.id] = value;
-      render();
-    }, [
-      ["", "не выбрано"],
-      ["accept", "Принять и следить"],
-      ["escalate", "Эскалировать"],
-      ["move", "Сдвинуть веху"],
-    ]));
-    const open = el("button", "tag");
-    open.type = "button";
-    open.textContent = "Открыть строку";
-    open.addEventListener("click", () => follow(risk.go));
-    form.appendChild(open);
-    card.appendChild(form);
+    card.appendChild(decisionForm(risk));
     wrap.appendChild(card);
   });
   return wrap;

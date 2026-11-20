@@ -440,9 +440,13 @@
     return items;
   }
 
+  function sumLimits(rows) {
+    return rows.reduce((acc, r) => acc + Number(r.limit), 0);
+  }
+
   function budget(list) {
     const filled = list.filter((r) => r.limit != null && !isNaN(r.limit));
-    const sum = filled.reduce((acc, r) => acc + Number(r.limit), 0);
+    const sum = sumLimits(filled);
     return {
       ceiling: PROJECT_COST_VALUE,
       ceilingText: PROJECT_COST,
@@ -450,6 +454,24 @@
       open: list.filter((r) => r.limit == null).length,
       sum,
       over: filled.length > 0 && sum > PROJECT_COST_VALUE,
+    };
+  }
+
+  function money(list) {
+    const valued = (pred) => list.filter((r) => r.limit != null && !isNaN(r.limit) && pred(r));
+    const committed = valued((r) => r.contract);
+    const paid = valued((r) => r.paid);
+    const delivered = valued((r) => r.delivered);
+    return {
+      ceiling: PROJECT_COST_VALUE,
+      lots: sumLimits(valued(() => true)),
+      committed: sumLimits(committed),
+      paid: sumLimits(paid),
+      delivered: sumLimits(delivered),
+      committedCount: committed.length,
+      paidCount: paid.length,
+      deliveredCount: delivered.length,
+      daysToCommission: calBetween(parse(TODAY), parse(COMMISSION)),
     };
   }
 
@@ -489,6 +511,7 @@
       queue: queue(list),
       risks: risks(list),
       budget: budget(list),
+      money: money(list),
       notices: notices(list),
       summary: summary(list),
     };
@@ -548,6 +571,7 @@
     queue,
     risks,
     budget,
+    money,
     CAUSE,
     RESPONSE,
     METHOD,
