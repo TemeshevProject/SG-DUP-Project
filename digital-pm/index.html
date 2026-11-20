@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Цифровой ПМ — план закупок</title>
+<script src="model.js"></script>
+<style>
+  :root {
+    --side: #013d85;
+    --pill: #4284f4;
+    --bg: #f5f6fa;
+    --card: #ffffff;
+    --ink: #1c2b3a;
+    --muted: #8b97a3;
+    --line: #e6ebf2;
+    --navy: #013d85;
+    --green: #29a768;
+    --red: #eb4038;
+    --gold: #e2a100;
+    --today: #9aa8b8;
+    --shadow: 0 1px 2px rgba(16, 42, 87, 0.04), 0 8px 20px rgba(16, 42, 87, 0.05);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: Inter, "Segoe UI", "Helvetica Neue", sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .app { height: 100vh; display: grid; grid-template-columns: 220px 1fr; }
+  aside.nav {
+    background: var(--side);
+    color: white;
+    display: flex;
+    flex-direction: column;
+    padding: 22px 12px 18px;
+  }
+  .logo { font-weight: 700; font-size: 16px; padding: 0 12px 22px; }
+  .nav button {
+    display: block; width: 100%; text-align: left;
+    background: transparent; border: 0; color: #fff;
+    border-radius: 8px; padding: 8px 14px; margin: 1px 0; font-size: 13.5px;
+  }
+  .nav button[aria-current="page"] { background: var(--pill); font-weight: 600; }
+  .nav button:focus-visible, .switch button:focus-visible, tr[role="button"]:focus-visible {
+    outline: 2px solid #9cc4ff; outline-offset: 2px;
+  }
+  .nav .spacer { flex: 1; }
+  .nav .src { color: rgba(255, 255, 255, 0.72); font-size: 12px; padding: 8px 12px; line-height: 1.4; }
+  main { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 18px 20px 16px; gap: 14px; }
+  .head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+  .titles { min-width: 0; }
+  h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.02em; }
+  .sub { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+  .switch { display: flex; background: white; border-radius: 10px; padding: 3px; box-shadow: var(--shadow); flex-shrink: 0; }
+  .switch button { border: 0; background: transparent; border-radius: 8px; padding: 7px 12px; color: var(--muted); white-space: nowrap; font-size: 13px; }
+  .switch button[aria-pressed="true"] { background: var(--pill); color: white; font-weight: 600; }
+  .workspace { display: grid; grid-template-columns: 1fr 292px; gap: 16px; min-height: 0; flex: 1; align-items: stretch; }
+  .workspace.solo { grid-template-columns: 1fr; }
+  .workspace.solo .rail { display: none; }
+  .stage { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 12px; overflow: auto; }
+  .rail { min-height: 0; overflow: auto; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .kpi { background: white; border-radius: 14px; padding: 12px 16px 14px; box-shadow: var(--shadow); }
+  .kpi b { display: block; font-size: 30px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
+  .kpi span { color: var(--muted); font-size: 13px; }
+  .kpi.bad b { color: var(--red); }
+  .rail h2 { margin: 2px 0 10px; font-size: 16px; font-weight: 700; }
+  .notes { display: flex; flex-direction: column; gap: 10px; }
+  .note { display: block; width: 100%; text-align: left; background: white; border: 0; border-radius: 12px; padding: 12px 14px 14px; box-shadow: var(--shadow); border-top: 3px solid var(--red); }
+  .note-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .note.gold { border-top-color: var(--gold); }
+  .note.blue { border-top-color: var(--pill); }
+  .note.green { border-top-color: var(--green); }
+  .note p { margin: 4px 0 0; font-size: 13px; line-height: 1.35; }
+  .note .tag { font-size: 13px; font-weight: 700; }
+  .note.red .tag { color: var(--red); }
+  .note.gold .tag { color: #c48a00; }
+  .note.green .tag { color: var(--green); }
+  .note.blue .tag { color: var(--pill); }
+  .panel { min-width: 0; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left; font-size: 13px; font-weight: 500;
+    color: var(--muted); padding: 4px 8px 8px; background: var(--bg);
+    position: sticky; top: 0;
+  }
+  td { padding: 5px 8px; vertical-align: middle; font-size: 13.5px; background: transparent; }
+  tr[role="button"] { cursor: pointer; }
+  tr.late td { background: #fdeded; }
+  tr.open td { background: #f3f7fd; }
+  .who { color: #5d6b7a; }
+  .chart { position: relative; height: 22px; }
+  .gridline, .mark, .bar, .need, .fact { position: absolute; top: 0; bottom: 0; }
+  .fact { width: 0; border-left: 3px solid var(--green); z-index: 2; }
+  .fact.bad { border-left-color: var(--red); }
+  .gridline { width: 1px; background: transparent; }
+  .mark { width: 0; border-left: 1.5px dashed var(--green); }
+  .mark.today { border-left: 1px solid var(--today); }
+  .bar { top: 6px; height: 10px; border-radius: 2px; }
+  .bar.navy, .bar.done { background: var(--navy); }
+  .bar.late { background: var(--red); }
+  .bar.risk { background: #e8892c; }
+  .bar.miss { background: repeating-linear-gradient(90deg, #f3c1be, #f3c1be 3px, transparent 3px, transparent 6px); }
+  .need { width: 0; border-left: 1.5px solid #1c2b3a; top: 3px; bottom: 3px; }
+  .months { display: flex; }
+  .months span { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); text-align: center; white-space: nowrap; }
+  .months.letters span { font-size: 12px; letter-spacing: 0.02em; }
+  table.dense td { padding: 2px 8px; }
+  table.dense .chart { height: 16px; }
+  table.dense .bar { top: 3px; height: 9px; }
+  table.gantt th:nth-child(1), table.gantt td:nth-child(1) { width: 250px; }
+  table.gantt th:nth-child(2), table.gantt td:nth-child(2) { width: 120px; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; padding: 8px 8px 0; color: var(--muted); font-size: 12px; }
+  .sw { display: inline-block; width: 16px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  .funnel { display: grid; grid-template-columns: 150px 1fr 36px; gap: 8px 10px; align-items: center; padding: 14px 16px; background: white; border-radius: 14px; box-shadow: var(--shadow); margin-bottom: 8px; }
+  .funnel i { font-style: normal; font-size: 13px; }
+  .track { height: 10px; background: #e7eef6; border-radius: 99px; overflow: hidden; }
+  .fill { height: 100%; border-radius: 99px; }
+  .fill.all { background: #b7c3d1; }
+  .fill.c { background: var(--navy); }
+  .fill.p { background: var(--gold); }
+  .fill.d { background: var(--green); }
+  .fill.commit { background: #6d90c4; }
+  .cap { grid-column: 1 / -1; color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+  .detail { padding: 4px 8px 12px; color: var(--ink); font-size: 13px; line-height: 1.45; }
+  .chip { font-weight: 700; }
+  .chip.ok { color: var(--green); }
+  .chip.bad { color: var(--red); }
+  .on { color: var(--green); font-weight: 650; }
+  .off { color: #b0bac4; }
+  .queue { display: flex; flex-wrap: wrap; gap: 8px; }
+  .qitem { flex: 1 1 210px; text-align: left; background: white; border: 0; border-radius: 12px; padding: 10px 12px; box-shadow: var(--shadow); white-space: normal; }
+  .qitem.bad { box-shadow: inset 3px 0 0 var(--red), var(--shadow); }
+  .qitem b { display: block; font-size: 13px; }
+  .qitem span, .qitem small { display: block; color: var(--muted); font-size: 12px; }
+  .editor { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .editor label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+  .editor input, .editor select, .pack input, .pack select { font: inherit; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; background: white; }
+  .pack { background: white; border-radius: 14px; padding: 12px 14px; box-shadow: var(--shadow); margin-top: 12px; }
+  .pack p { margin: 4px 0 8px; color: var(--muted); font-size: 13px; }
+  .risks { display: flex; flex-direction: column; gap: 10px; }
+  .decision { margin-top: 8px; }
+  .queuelabel { font-size: 12px; font-weight: 650; color: var(--muted); }
+  button.tag { margin-top: 8px; border: 0; background: #eef3fb; color: var(--navy); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; font-weight: 650; }
+  .cadence, .splitgrid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .splitgrid { grid-template-columns: 1fr 1fr; }
+  .sheet { background: white; border-radius: 14px; padding: 12px 14px 14px; box-shadow: var(--shadow); min-width: 0; }
+  .sheet h3 { margin: 0 0 4px; font-size: 14px; }
+  .sheet p { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+  .sheet ul { margin: 8px 0 0; padding: 0; list-style: none; }
+  .sheet li { border-top: 1px solid var(--line); }
+  .sheet li button { display: block; width: 100%; text-align: left; background: transparent; border: 0; padding: 7px 0; }
+  .sheet li b { display: block; font-size: 13px; font-weight: 650; }
+  .sheet li span { display: block; color: var(--muted); font-size: 12px; }
+  .moneyline { display: grid; grid-template-columns: 132px 1fr 92px; gap: 8px; align-items: center; margin-top: 8px; font-size: 13px; }
+  .moneyline b { text-align: right; font-variant-numeric: tabular-nums; }
+  @media (max-width: 1100px) {
+    .cadence, .splitgrid, .kpis { grid-template-columns: 1fr 1fr; }
+    .workspace { grid-template-columns: 1fr; }
+    .rail { display: none; }
+  }
+  @media (max-width: 720px) {
+    .app { grid-template-columns: 1fr; height: auto; }
+    aside.nav { flex-direction: row; flex-wrap: wrap; padding: 12px; }
+    .logo { width: 100%; padding: 0 8px 8px; }
+    .nav .spacer, .nav .src { display: none; }
+    .nav button { width: auto; }
+    .cadence, .splitgrid, .kpis { grid-template-columns: 1fr; }
+    .moneyline { grid-template-columns: 96px 1fr 72px; }
+    main { padding: 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="nav">
+    <div class="logo">Цифровой ПМ</div>
+    <button type="button" data-view="staff">Штаб</button>
+    <button type="button" data-view="proekt">План проекта</button>
+    <button type="button" data-view="zakupki">План-факт закупок</button>
+    <button type="button" data-view="dogovory">Расходные договоры</button>
+    <button type="button" data-view="platezhi">Платежи</button>
+    <button type="button" data-view="budget">Бюджет закупок</button>
+    <button type="button" data-view="risk">Реестр рисков</button>
+    <button type="button" data-view="uvedomleniya">Уведомления</button>
+    <div class="spacer"></div>
+    <div class="src">Устав 1.05 от 22.05.2025<br>Правила закупок</div>
+  </aside>
+  <main>
+    <div class="head">
+      <div class="titles">
+        <h1>Услуги по предоставлению данных ИС ДОБ · Алматинская область</h1>
+        <p class="sub" id="sub"></p>
+      </div>
+      <div class="switch" id="fact-switch" hidden>
+        <button type="button" data-fact="plan">План</button>
+        <button type="button" data-fact="both">План-факт</button>
+      </div>
+    </div>
+    <div class="workspace">
+      <div class="stage">
+        <div class="kpis" id="kpis"></div>
+        <div class="panel" id="panel"></div>
+      </div>
+      <aside class="rail">
+        <h2>Уведомления</h2>
+        <div class="notes" id="notes"></div>
+      </aside>
+    </div>
+  </main>
+</div>
+<script>
+const M = window.DigitalPm;
+const state = { view: "staff", open: null, edits: {}, drafts: [], seq: 1, decisions: {}, factMode: "both" };
+const VIEW_ALIAS = { gantt: "zakupki", ispolnenie: "platezhi" };
+const VIEWS = ["staff", "proekt", "zakupki", "dogovory", "platezhi", "budget", "risk", "uvedomleniya"];
+function pack() { return M.control(state.edits, state.drafts); }
+function setEdit(id, patch, silent) {
+  const draft = state.drafts.find((item) => item.id === id);
+  if (draft) Object.assign(draft, patch);
+  else state.edits[id] = Object.assign({}, state.edits[id], patch);
+  if (!silent) render();
+}
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+}
+function readHash() {
+  const [raw, id] = location.hash.replace("#", "").split("/");
+  const view = VIEW_ALIAS[raw] || raw;
+  const known = VIEWS;
+  state.view = known.indexOf(view) >= 0 ? view : "staff";
+  state.open = id || null;
+}
+function writeHash() {
+  const next = "#" + state.view + (state.open ? "/" + state.open : "");
+  if (location.hash !== next) history.replaceState(null, "", next);
+}
+
+function render() {
+  const data = pack();
+  const list = data.list;
+  const plan = data.plan;
+  const s = data.summary;
+  const notesData = data.notices;
+  document.getElementById("sub").textContent =
+    "Срез " + M.shortDate(M.TODAY) + " · ввод в ПЭ " + M.shortDate(M.COMMISSION) + " · " + M.PROJECT_COST;
+  document.querySelectorAll(".nav button").forEach((btn) => {
+    if (btn.dataset.view === state.view) btn.setAttribute("aria-current", "page");
+    else btn.removeAttribute("aria-current");
+  });
+  document.querySelector(".workspace").classList.toggle("solo", state.view === "uvedomleniya" || state.view === "risk");
+  const factSwitch = document.getElementById("fact-switch");
+  factSwitch.hidden = state.view !== "zakupki";
+  factSwitch.querySelectorAll("button").forEach((btn) => {
+    btn.setAttribute("aria-pressed", String(btn.dataset.fact === state.factMode));
+  });
+
+  const kpis = document.getElementById("kpis");
+  kpis.replaceChildren();
+  kpiCards(list, plan, s, notesData).forEach(([value, label, tone]) => {
+    const k = el("div", "kpi" + (tone ? " " + tone : ""));
+    k.appendChild(el("b", "", value));
+    k.appendChild(el("span", "", label));
+    kpis.appendChild(k);
+  });
+
+  const panel = document.getElementById("panel");
+  panel.replaceChildren();
+  if (state.view !== "uvedomleniya" && state.view !== "staff") panel.appendChild(actionQueue(data.queue));
+  if (state.view === "staff") panel.appendChild(staffView(data));
+  else if (state.view === "proekt") panel.appendChild(planGantt(plan));
+  else if (state.view === "zakupki") {
+    panel.appendChild(gantt(list));
+    panel.appendChild(packageBox());
+  } else if (state.view === "dogovory") panel.appendChild(contracts(list));
+  else if (state.view === "platezhi") panel.appendChild(execution(list, s));
+  else if (state.view === "budget") panel.appendChild(budgetView(list, data.budget));
+  else if (state.view === "risk") panel.appendChild(riskView(data.risks));
+  else panel.appendChild(noticeBoard(notesData));
+
+  const notes = document.getElementById("notes");
+  notes.replaceChildren();
+  notesData.forEach((n) => notes.appendChild(card(n.tone, n.tag, n.text, n.go)));
+  writeHash();
+  const opened = document.querySelector("tr.open, tr.late.open");
+  if (opened) opened.scrollIntoView({ block: "center" });
+}
+
+function shortMoney(value) {
+  if (!value) return "0";
+  return (value / 1e9).toFixed(1).replace(".", ",") + " млрд";
+}
+function moneyLine(label, value, ceiling, cls) {
+  const row = el("div", "moneyline");
+  row.appendChild(el("span", "", label));
+  const track = el("div", "track");
+  const fill = el("div", "fill " + cls);
+  fill.style.width = Math.max(0, Math.min(100, value / ceiling * 100)) + "%";
+  track.appendChild(fill);
+  row.appendChild(track);
+  row.appendChild(el("b", "", shortMoney(value)));
+  return row;
+}
+function staffView(data) {
+  const wrap = el("div");
+  wrap.style.display = "flex";
+  wrap.style.flexDirection = "column";
+  wrap.style.gap = "12px";
+  const m = data.money;
+  const cadence = el("div", "cadence");
+  cadence.appendChild(weekSheet(data.queue));
+  cadence.appendChild(monthSheet(m));
+  cadence.appendChild(gateSheet(data.plan));
+  wrap.appendChild(cadence);
+  wrap.appendChild(moneySheet(m));
+  wrap.appendChild(decisionSheet(data.risks));
+  const split = el("div", "splitgrid");
+  split.appendChild(exceptionSheet(
+    "Отклонения устава",
+    "Оранжевым остаются на плане проекта. Прогноз закупки сюда не переносится.",
+    data.plan.filter((t) => t.risk || t.moved).map((t) => ({
+      title: t.name,
+      meta: t.who + (t.moved ? " · база " + M.shortDate(t.baselineEnd) + " → " + M.shortDate(t.end) : " · отклонение в уставе"),
+      go: "proekt/" + t.id,
+    }))
+  ));
+  split.appendChild(exceptionSheet(
+    "Прогноз позже вехи",
+    "Считается по закупке: заявка, оплата аванса и срок подрядчика.",
+    data.list.filter((r) => r.late).map((r) => ({
+      title: r.name,
+      meta: (r.causeTitle || r.stage) + " · " + M.shortDate(r.forecastIso) + " · +" + r.slip + " дн",
+      go: "zakupki/" + r.id,
+    }))
+  ));
+  wrap.appendChild(split);
+  return wrap;
+}
+function weekSheet(queue) {
+  const sheet = el("article", "sheet");
+  sheet.appendChild(el("h3", "", "Неделя"));
+  sheet.appendChild(el("p", "", "Очередь владельцев. ДУП подаёт заявку, закупщик ведёт процедуру, финблок платит."));
+  const list = el("ul");
+  queue.slice(0, 5).forEach((item) => {
+    const li = document.createElement("li");
+    const b = el("button");
+    b.type = "button";
+    b.appendChild(el("b", "", item.title + " · " + item.who));
+    b.appendChild(el("span", "", item.text));
+    b.addEventListener("click", () => follow(item.go));
+    li.appendChild(b);
+    list.appendChild(li);
+  });
+  sheet.appendChild(list);
+  const more = el("button", "tag");
+  more.type = "button";
+  more.textContent = "Вся очередь в закупках";
+  more.addEventListener("click", () => follow("zakupki"));
+  sheet.appendChild(more);
+  return sheet;
+}
+function monthSheet(m) {
+  const sheet = el("article", "sheet");
+  sheet.appendChild(el("h3", "", "Месяц"));
+  sheet.appendChild(el("p", "", "Лимиты лотов " + shortMoney(m.lots) + " внутри потолка. Договор, оплата и поставка — три разные суммы."));
+  const list = el("ul");
+  [
+    ["Обязались договором", shortMoney(m.committed) + " · " + m.committedCount + " лотов"],
+    ["Оплачено", shortMoney(m.paid) + " · " + m.paidCount + " лотов"],
+    ["Поставлено", shortMoney(m.delivered) + " · " + m.deliveredCount + " лотов"],
+  ].forEach(([title, meta]) => {
+    const li = document.createElement("li");
+    li.appendChild(el("b", "", title));
+    li.appendChild(el("span", "", meta));
+    li.style.padding = "7px 0";
+    list.appendChild(li);
+  });
+  sheet.appendChild(list);
+  const more = el("button", "tag");
+  more.type = "button";
+  more.textContent = "Бюджет закупок";
+  more.addEventListener("click", () => follow("budget"));
+  sheet.appendChild(more);
+  return sheet;
+}
+function gateSheet(plan) {
+  const moved = plan.filter((t) => t.moved);
+  const charter = plan.filter((t) => t.risk);
+  const sheet = el("article", "sheet");
+  sheet.appendChild(el("h3", "", "Ворота устава"));
+  sheet.appendChild(el("p", "", "База заморожена. Сдвиг вехи виден отдельно от оранжевых отклонений устава."));
+  const list = el("ul");
+  const li = document.createElement("li");
+  li.style.padding = "7px 0";
+  li.appendChild(el("b", "", charter.length + " отклонения в уставе"));
+  li.appendChild(el("span", "", moved.length ? moved.length + " вех сдвинуты от базы" : "Вехи совпадают с базой"));
+  list.appendChild(li);
+  sheet.appendChild(list);
+  const more = el("button", "tag");
+  more.type = "button";
+  more.textContent = "План проекта";
+  more.addEventListener("click", () => follow("proekt"));
+  sheet.appendChild(more);
+  return sheet;
+}
+function moneySheet(m) {
+  const sheet = el("article", "sheet");
+  sheet.appendChild(el("h3", "", "Деньги на срезе"));
+  sheet.appendChild(el("p", "", "Потолок задаёт устав. Лимиты лотов — управленческая раскладка, не приложение к уставу. Поставка в исполнение входит, оплата — нет."));
+  sheet.appendChild(moneyLine("Потолок", m.ceiling, m.ceiling, "all"));
+  sheet.appendChild(moneyLine("Лимиты лотов", m.lots, m.ceiling, "c"));
+  sheet.appendChild(moneyLine("Обязались", m.committed, m.ceiling, "commit"));
+  sheet.appendChild(moneyLine("Оплачено", m.paid, m.ceiling, "p"));
+  sheet.appendChild(moneyLine("Поставлено", m.delivered, m.ceiling, "d"));
+  return sheet;
+}
+function decisionSheet(risks) {
+  const sheet = el("article", "sheet");
+  const open = risks.filter((risk) => !state.decisions[risk.id]).sort((a, b) => (a.level === "высокий" ? 0 : 1) - (b.level === "высокий" ? 0 : 1));
+  sheet.appendChild(el("h3", "", "Решение сегодня"));
+  sheet.appendChild(el("p", "", open.length ? "По каждому риску: принять, эскалировать или сдвинуть веху. Запись видна в реестре." : "На срезе решения записаны."));
+  open.slice(0, 4).forEach((risk) => sheet.appendChild(decisionCard(risk)));
+  if (open.length > 4) {
+    const more = el("button", "tag");
+    more.type = "button";
+    more.textContent = "Ещё " + (open.length - 4) + " в реестре";
+    more.addEventListener("click", () => follow("risk"));
+    sheet.appendChild(more);
+  }
+  return sheet;
+}
+function decisionCard(risk) {
+  const card = el("div", "note " + risk.tone);
+  card.style.marginTop = "8px";
+  card.appendChild(el("div", "tag", risk.level + " · " + risk.cause));
+  card.appendChild(el("p", "", risk.title));
+  card.appendChild(el("p", "", "Как поступить: " + risk.response));
+  card.appendChild(decisionForm(risk));
+  return card;
+}
+function decisionForm(risk) {
+  const decision = state.decisions[risk.id];
+  const form = el("div", "editor decision");
+  form.appendChild(field("Решение", "select", decision || "", (value) => {
+    if (value) state.decisions[risk.id] = value;
+    else delete state.decisions[risk.id];
+    render();
+  }, [
+    ["", "не выбрано"],
+    ["accept", "Принять и следить"],
+    ["escalate", "Эскалировать"],
+    ["move", "Сдвинуть веху"],
+  ]));
+  const open = el("button", "tag");
+  open.type = "button";
+  open.textContent = "Открыть строку";
+  open.addEventListener("click", () => follow(risk.go));
+  form.appendChild(open);
+  return form;
+}
+function exceptionSheet(title, text, rows) {
+  const sheet = el("article", "sheet");
+  sheet.appendChild(el("h3", "", title));
+  sheet.appendChild(el("p", "", text));
+  const list = el("ul");
+  if (!rows.length) {
+    const li = document.createElement("li");
+    li.style.padding = "7px 0";
+    li.appendChild(el("span", "", "На срезе пусто"));
+    list.appendChild(li);
+  }
+  rows.forEach((row) => {
+    const li = document.createElement("li");
+    const b = el("button");
+    b.type = "button";
+    b.appendChild(el("b", "", row.title));
+    b.appendChild(el("span", "", row.meta));
+    b.addEventListener("click", () => follow(row.go));
+    li.appendChild(b);
+    list.appendChild(li);
+  });
+  sheet.appendChild(list);
+  return sheet;
+}
+function actionQueue(items) {
+  const wrap = el("div");
+  wrap.style.display = "flex";
+  wrap.style.flexDirection = "column";
+  wrap.style.gap = "8px";
+  wrap.appendChild(el("div", "queuelabel", "Неделя · шаг и владелец"));
+  const row = el("div", "queue");
+  if (!items.length) {
+    const empty = el("div", "qitem");
+    empty.appendChild(el("b", "", "Очередь пуста"));
+    empty.appendChild(el("span", "", "На срезе нет шага, который требует руки"));
+    row.appendChild(empty);
+    wrap.appendChild(row);
+    return wrap;
+  }
+  items.forEach((item) => {
+    const b = el("button", "qitem" + (item.tone ? " " + item.tone : ""));
+    b.type = "button";
+    b.appendChild(el("b", "", item.title));
+    b.appendChild(el("span", "", item.text));
+    b.appendChild(el("small", "", item.who + " · до " + item.due));
+    b.addEventListener("click", () => follow(item.go));
+    row.appendChild(b);
+  });
+  wrap.appendChild(row);
+  return wrap;
+}
+function kpiCards(list, plan, s, notesData) {
+  if (state.view === "staff") {
+    const m = pack().money;
+    const open = pack().risks.filter((risk) => !state.decisions[risk.id]).length;
+    return [
+      [String(m.daysToCommission), "дней до ввода"],
+      [String(s.late), "прогноз позже вехи", s.late ? "bad" : ""],
+      [String(open), "без решения", open ? "bad" : ""],
+      [shortMoney(m.delivered), "поставлено"],
+    ];
+  }
+  if (state.view === "proekt") {
+    return [
+      [String(plan.length), "задач в плане"],
+      [String(new Set(plan.map((t) => t.who)).size), "исполнителей"],
+      [String(plan.filter((t) => t.late).length), "с отклонением", "bad"],
+      [M.shortDate(M.COMMISSION), "ввод в ПЭ"],
+    ];
+  }
+  if (state.view === "zakupki") {
+    return [
+      [String(s.total), "строк в плане-факте"],
+      [String(s.total - s.late), "к дате потребности"],
+      [String(s.late), "с отклонением", s.late ? "bad" : ""],
+      [M.shortDate(M.COMMISSION), "ввод в ПЭ"],
+    ];
+  }
+  if (state.view === "dogovory") {
+    const procedure = list.filter((r) => r.state === "procedure").length;
+    const missing = list.filter((r) => !r.contract && r.state !== "procedure").length;
+    return [
+      [String(s.contract), "договоров заключено"],
+      [String(procedure), "идёт процедура"],
+      [String(missing), "заявка не подана", missing ? "bad" : ""],
+      [String(s.total), "строк закупки"],
+    ];
+  }
+  if (state.view === "platezhi") {
+    return [
+      [String(s.contract), "договоров из " + s.total],
+      [String(s.paid), "строк оплачено"],
+      [String(s.delivered), "поставлено — исполнение"],
+      [String(s.late), "прогноз позже даты", s.late ? "bad" : ""],
+    ];
+  }
+  if (state.view === "budget") {
+    const b = pack().budget;
+    return [
+      ["26,1 млрд", "потолок проекта"],
+      [String(list.length), "лотов в бюджете"],
+      [String(b.open), "без лимита", b.open ? "bad" : ""],
+      [b.filled ? (b.sum / 1e9).toFixed(1).replace(".", ",") + " млрд" : "—", b.over ? "выше потолка" : "бюджет лотов", b.over ? "bad" : ""],
+    ];
+  }
+  if (state.view === "risk") {
+    const risks = pack().risks;
+    const high = risks.filter((r) => r.level === "высокий").length;
+    const decided = risks.filter((r) => state.decisions[r.id]).length;
+    return [
+      [String(risks.length), "рисков в реестре"],
+      [String(high), "высоких", high ? "bad" : ""],
+      [String(risks.length - decided), "без решения", risks.length - decided ? "bad" : ""],
+      [String(decided), "решение записано"],
+    ];
+  }
+  return [
+    [String(notesData.length), "уведомлений"],
+    [String(notesData.filter((n) => n.tone === "red").length), "отклонения", "bad"],
+    [String(notesData.filter((n) => n.tone === "gold" || n.tone === "blue").length), "требуют действия"],
+    [String(notesData.filter((n) => n.tone === "green").length), "выполнено"],
+  ];
+}
+
+function card(tone, tag, text, go) {
+  const n = el("button", "note " + tone);
+  n.type = "button";
+  n.appendChild(el("div", "tag", tag));
+  n.appendChild(el("p", "", text));
+  if (go) n.addEventListener("click", () => follow(go));
+  return n;
+}
+function follow(go) {
+  const [view, id] = go.split("/");
+  state.view = view;
+  state.open = id || null;
+  render();
+}
+function noticeBoard(items) {
+  const grid = el("div", "note-grid");
+  items.forEach((n) => grid.appendChild(card(n.tone, n.tag, n.text, n.go)));
+  return grid;
+}
+
+function planGantt(list) {
+  const wrap = el("div");
+  const table = document.createElement("table");
+  table.className = "gantt dense";
+  const hr = document.createElement("tr");
+  hr.appendChild(el("th", "", "Задача"));
+  hr.appendChild(el("th", "", "Исполнитель"));
+  const th = document.createElement("th");
+  th.appendChild(monthHead());
+  hr.appendChild(th);
+  const thead = document.createElement("thead");
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  const body = document.createElement("tbody");
+  list.forEach((t) => {
+    const tr = document.createElement("tr");
+    if (t.late) tr.className = "late";
+    if (state.open === t.id) tr.classList.add("open");
+    tr.tabIndex = 0;
+    tr.setAttribute("role", "button");
+    tr.appendChild(cell(t.name));
+    tr.appendChild(cell(t.who, "who"));
+    const td = document.createElement("td");
+    td.appendChild(planBar(t));
+    tr.appendChild(td);
+    tr.addEventListener("click", () => toggle(t.id));
+    tr.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(t.id); }
+    });
+    body.appendChild(tr);
+    if (state.open === t.id) body.appendChild(planDetail(t));
+  });
+  table.appendChild(body);
+  wrap.appendChild(table);
+  const legend = el("div", "legend");
+  legend.appendChild(spanSw("navy", "срок по уставу"));
+  legend.appendChild(spanSw("risk", "отклонение в уставе"));
+  legend.appendChild(el("span", "", "Пунктир — ввод в ПЭ. Серая черта — срез " + M.shortDate(M.TODAY) + ". Чёрная черта — финиш базы, если веха сдвинута."));
+  wrap.appendChild(legend);
+  return wrap;
+}
+function planBar(t) {
+  const box = el("div", "chart");
+  M.months().forEach((m) => {
+    const g = el("i", "gridline");
+    g.style.left = M.pos(m.start) + "%";
+    box.appendChild(g);
+  });
+  const a = M.pos(t.start);
+  const b = M.pos(t.end);
+  if (t.risk && t.riskFrom) {
+    paint(box, a, M.pos(t.riskFrom), "navy");
+    paint(box, M.pos(t.riskFrom), b, "risk");
+  } else {
+    paint(box, a, b, t.risk ? "risk" : "navy");
+  }
+  if (t.moved) {
+    const base = el("i", "need");
+    base.style.left = M.pos(t.baselineEnd) + "%";
+    base.title = "Финиш по уставу " + M.shortDate(t.baselineEnd);
+    box.appendChild(base);
+  }
+  const today = el("i", "mark today");
+  today.style.left = M.pos(M.TODAY) + "%";
+  box.appendChild(today);
+  const comm = el("i", "mark");
+  comm.style.left = M.pos(M.COMMISSION) + "%";
+  box.appendChild(comm);
+  return box;
+}
+function paint(box, a, b, cls) {
+  const bar = el("i", "bar " + cls);
+  bar.style.left = a + "%";
+  bar.style.width = Math.max(0.5, b - a) + "%";
+  box.appendChild(bar);
+}
+function planDetail(t) {
+  const tr = document.createElement("tr");
+  const td = document.createElement("td");
+  td.colSpan = 3;
+  const box = el("div", "detail");
+  const finish = t.id === "ops" ? "15.05.30, на графике виден старт" : M.shortDate(t.end);
+  box.appendChild(el("div", "", "По уставу: " + M.shortDate(t.start) + " — " + finish + "."));
+  if (t.risk && t.riskFrom) {
+    box.appendChild(el("div", "", "Оранжевый хвост — с 28.04.25, даты старта поверки. От неё зависит запуск штрафования."));
+  } else if (t.risk) {
+    box.appendChild(el("div", "", "В уставе задача выделена как отклонение."));
+  }
+  if (t.linked && t.linked.length) {
+    const form = el("div", "editor");
+    form.appendChild(field("Дата потребности лотов", "date", t.end, (value) => {
+      t.linked.forEach((id) => setEdit(id, { need: value }, true));
+      render();
+    }));
+    box.appendChild(form);
+    box.appendChild(el("div", "who", "К задаче привязано лотов: " + t.linked.length + ". Новая дата двигает каждый из них и пересчитывает заявку."));
+    const jump = el("button", "tag");
+    jump.type = "button";
+    jump.textContent = "Открыть в плане закупок";
+    jump.addEventListener("click", (e) => { e.stopPropagation(); follow("zakupki/" + t.linked[0]); });
+    box.appendChild(jump);
+  }
+  td.appendChild(box);
+  tr.appendChild(td);
+  return tr;
+}
+function contracts(list) {
+  const wrap = el("div");
+  const table = document.createElement("table");
+  const hr = document.createElement("tr");
+  ["ТРУ", "Контрагент", "Договор", "Потребность", "Прогноз"].forEach((t) => hr.appendChild(el("th", "", t)));
+  const thead = document.createElement("thead");
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  const body = document.createElement("tbody");
+  list.forEach((r) => {
+    const tr = document.createElement("tr");
+    if (!r.contract && r.state !== "procedure") tr.className = "late";
+    if (state.open === r.id) tr.classList.add("open");
+    tr.tabIndex = 0;
+    tr.setAttribute("role", "button");
+    tr.appendChild(cell(r.name));
+    tr.appendChild(cell(r.who, "who"));
+    const status = r.state === "awaitPay" ? "Ждёт предоплату" : r.state === "unpaid" ? "Остаток не оплачен" : r.contract ? "Заключён" : r.state === "procedure" ? "Идёт процедура" : "Заявка не подана";
+    const tone = r.state === "awaitPay" || r.state === "unpaid" ? "bad" : r.contract ? "ok" : r.state === "procedure" ? "" : "bad";
+    tr.appendChild(cell(status, tone ? "chip " + tone : "who"));
+    tr.appendChild(cell(M.shortDate(r.need)));
+    tr.appendChild(cell(M.shortDate(r.forecastIso), r.slip > 0 ? "chip bad" : ""));
+    tr.addEventListener("click", () => toggle(r.id));
+    tr.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(r.id); }
+    });
+    body.appendChild(tr);
+    if (state.open === r.id) body.appendChild(detailRow(r, 5));
+  });
+  table.appendChild(body);
+  wrap.appendChild(table);
+  return wrap;
+}
+function monthHead() {
+  const box = el("div");
+  const years = el("div", "months");
+  const y4 = el("span", "", "2024");
+  y4.style.flex = "4";
+  const y5 = el("span", "", "2025");
+  y5.style.flex = "9";
+  years.appendChild(y4);
+  years.appendChild(y5);
+  box.appendChild(years);
+  const mh = el("div", "months letters");
+  M.months().forEach((m) => mh.appendChild(el("span", "", m.label.slice(0, 1).toUpperCase())));
+  box.appendChild(mh);
+  return box;
+}
+function gantt(list) {
+  const wrap = el("div");
+  const table = document.createElement("table");
+  table.className = "gantt dense";
+  const thead = document.createElement("thead");
+  const hr = document.createElement("tr");
+  hr.appendChild(el("th", "", "Задача"));
+  hr.appendChild(el("th", "", "Исполнитель"));
+  const th = document.createElement("th");
+  th.appendChild(monthHead());
+  hr.appendChild(th);
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  const body = document.createElement("tbody");
+  list.forEach((r) => {
+    const tr = document.createElement("tr");
+    if (r.late) tr.className = "late";
+    if (state.open === r.id) tr.classList.add("open");
+    tr.tabIndex = 0;
+    tr.setAttribute("role", "button");
+    tr.setAttribute("aria-expanded", String(state.open === r.id));
+    tr.appendChild(cell(r.name));
+    tr.appendChild(cell(r.who, "who"));
+    const td = document.createElement("td");
+    td.appendChild(bar(r));
+    tr.appendChild(td);
+    tr.addEventListener("click", () => toggle(r.id));
+    tr.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(r.id); }
+    });
+    body.appendChild(tr);
+    if (state.open === r.id) body.appendChild(detailRow(r, 3));
+  });
+  table.appendChild(body);
+  wrap.appendChild(table);
+  const legend = el("div", "legend");
+  legend.appendChild(spanSw("navy", "план, от старта до потребности"));
+  legend.appendChild(el("span", "", "Чёрная черта — дата потребности."));
+  if (state.factMode !== "plan") {
+    legend.appendChild(factSwatch("черта факта: зелёная в срок, красная позже"));
+    legend.appendChild(spanSw("late", "хвост факта после плана"));
+  }
+  legend.appendChild(el("span", "", "Пунктир — ввод в ПЭ " + M.shortDate(M.COMMISSION) + ". Серая черта — срез " + M.shortDate(M.TODAY) + "."));
+  wrap.appendChild(legend);
+  return wrap;
+}
+
+function spanSw(cls, text) {
+  const s = el("span");
+  const i = el("i", "sw " + cls);
+  const fills = { navy: "var(--navy)", done: "var(--green)", risk: "#e8892c", miss: "repeating-linear-gradient(90deg, #f3c1be, #f3c1be 3px, transparent 3px, transparent 5px)" };
+  i.style.background = fills[cls] || "var(--red)";
+  s.appendChild(i);
+  s.append(text);
+  return s;
+}
+
+function factIso(r) {
+  if (r.delivered) return r.need || "";
+  return r.forecastIso || "";
+}
+function factSwatch(text) {
+  const s = el("span");
+  const i = el("i", "sw");
+  i.style.width = "3px";
+  i.style.height = "12px";
+  i.style.background = "var(--green)";
+  s.appendChild(i);
+  s.append(text);
+  return s;
+}
+function bar(r) {
+  const box = el("div", "chart");
+  M.months().forEach((m) => {
+    const g = el("i", "gridline");
+    g.style.left = M.pos(m.start) + "%";
+    box.appendChild(g);
+  });
+  if (r.charterStart && r.need) {
+    const planned = el("i", "bar navy");
+    planned.style.left = M.pos(r.charterStart) + "%";
+    planned.style.width = Math.max(0.8, M.pos(r.need) - M.pos(r.charterStart)) + "%";
+    box.appendChild(planned);
+  }
+  const fact = factIso(r);
+  const showFact = state.factMode !== "plan" && fact;
+  if (showFact && r.need && fact > r.need) {
+    const red = el("i", "bar late");
+    red.style.left = M.pos(r.need) + "%";
+    red.style.width = Math.max(0.8, M.pos(fact) - M.pos(r.need)) + "%";
+    box.appendChild(red);
+  }
+  if (r.need) {
+    const need = el("i", "need");
+    need.style.left = M.pos(r.need) + "%";
+    need.title = "План " + M.shortDate(r.need);
+    box.appendChild(need);
+  }
+  if (showFact) {
+    const tick = el("i", "fact" + (r.need && fact > r.need ? " bad" : ""));
+    tick.style.left = M.pos(fact) + "%";
+    tick.title = (r.delivered ? "Факт " : "Прогноз факта ") + M.shortDate(fact);
+    box.appendChild(tick);
+  }
+  const today = el("i", "mark today");
+  today.style.left = M.pos(M.TODAY) + "%";
+  box.appendChild(today);
+  const comm = el("i", "mark");
+  comm.style.left = M.pos(M.COMMISSION) + "%";
+  box.appendChild(comm);
+  return box;
+}
+
+function execution(list, s) {
+  const wrap = el("div");
+  const funnel = el("div", "funnel");
+  funnel.appendChild(el("div", "cap", "Исполнение — это поставка. Договор и оплата показывают шаг, но в поставку не входят. Шкала считает строки. Деньги лотов — в бюджете закупок, потолок проекта " + M.PROJECT_COST + "."));
+  const scale = s.total || 1;
+  [
+    ["Строк закупки", s.total, "all"],
+    ["Договор заключён", s.contract, "c"],
+    ["Оплачено", s.paid, "p"],
+    ["Поставлено", s.delivered, "d"],
+  ].forEach(([label, value, cls]) => {
+    funnel.appendChild(el("i", "", label));
+    const track = el("div", "track");
+    const fill = el("div", "fill " + cls);
+    fill.style.width = (value / scale * 100) + "%";
+    track.appendChild(fill);
+    funnel.appendChild(track);
+    funnel.appendChild(el("b", "", String(value)));
+  });
+  wrap.appendChild(funnel);
+  const table = document.createElement("table");
+  const hr = document.createElement("tr");
+  ["ТРУ", "Кто", "Договор", "Оплата", "Поставлено", "Прогноз", "К дате"].forEach((t) => hr.appendChild(el("th", "", t)));
+  const thead = document.createElement("thead");
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  const body = document.createElement("tbody");
+  list.forEach((r) => {
+    const tr = document.createElement("tr");
+    if (r.late) tr.className = "late";
+    tr.tabIndex = 0;
+    tr.setAttribute("role", "button");
+    tr.appendChild(cell(r.name));
+    tr.appendChild(cell(r.who, "who"));
+    tr.appendChild(gate(r.contract));
+    tr.appendChild(gate(r.paid));
+    tr.appendChild(gate(r.delivered));
+    tr.appendChild(cell(M.shortDate(r.forecastIso)));
+    const slip = r.slip > 0 ? "+" + r.slip + " дн" : "в срок";
+    tr.appendChild(cell(slip, "chip " + (r.slip > 0 ? "bad" : "ok")));
+    tr.addEventListener("click", () => toggle(r.id));
+    tr.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(r.id); }
+    });
+    body.appendChild(tr);
+    if (state.open === r.id) body.appendChild(detailRow(r, 7));
+  });
+  table.appendChild(body);
+  wrap.appendChild(table);
+  return wrap;
+}
+
+function gate(on) {
+  return cell(on ? "да" : "нет", on ? "on" : "off");
+}
+function cell(text, cls) {
+  const td = document.createElement("td");
+  if (cls) td.className = cls;
+  td.textContent = text;
+  return td;
+}
+function detailRow(r, span) {
+  const tr = document.createElement("tr");
+  const td = document.createElement("td");
+  td.colSpan = span;
+  const box = el("div", "detail");
+  const pay = r.pay === "advance" ? "Аванс до отгрузки" : r.pay === "prepay" ? "Предоплата до выдачи" : "Оплата после приёмки, дату не двигает";
+  box.appendChild(el("div", "", "Дата заявки " + M.shortDate(r.requiredIso) + " = потребность " + M.shortDate(r.need) + " − " + r.lead + " к.д. поставки" + (r.pay === "post" ? "" : " − 3 р.д. оплаты") + " − " + r.norm + " р.д. (" + r.methodTitle + ")."));
+  box.appendChild(el("div", "", "В плане проекта задача стартует " + M.shortDate(r.charterStart) + ". " + pay + "."));
+  if (r.causeTitle) box.appendChild(el("div", "", "Причина: " + r.causeTitle + "."));
+  if (r.cause) box.appendChild(el("div", "", r.cause));
+  if (r.response) box.appendChild(el("div", "", "Как поступить: " + r.response));
+  if (!r.delivered && r.scenarioToday) {
+    box.appendChild(el("div", "", "Если подать заявку сегодня: финиш " + M.shortDate(r.scenarioToday) + ". Если подать в дату старта плана (" + M.shortDate(r.charterStart) + "): финиш " + M.shortDate(r.scenarioPlan) + "."));
+  }
+  box.appendChild(el("div", "who", r.source || ""));
+  box.appendChild(lineEditor(r));
+  td.appendChild(box);
+  tr.appendChild(td);
+  return tr;
+}
+function field(label, type, value, onChange, options) {
+  const wrap = el("label", "", label);
+  let input;
+  if (type === "select") {
+    input = document.createElement("select");
+    options.forEach((opt) => {
+      const o = document.createElement("option");
+      o.value = opt[0];
+      o.textContent = opt[1];
+      if (opt[0] === value) o.selected = true;
+      input.appendChild(o);
+    });
+  } else {
+    input = document.createElement("input");
+    input.type = type;
+    if (type === "number") input.min = "0";
+    if (value != null && value !== "") input.value = value;
+    else input.placeholder = "не задан";
+  }
+  input.addEventListener("change", () => onChange(input.value));
+  input.addEventListener("click", (e) => e.stopPropagation());
+  wrap.appendChild(input);
+  return wrap;
+}
+function lineEditor(r) {
+  const form = el("div", "editor");
+  form.appendChild(field("Потребность", "date", r.need || "", (value) => setEdit(r.id, { need: value })));
+  form.appendChild(field("Способ", "select", r.method, (value) => setEdit(r.id, { method: value }), [
+    ["zcp", "Запрос цен, 35 р.д."],
+    ["zcpComplex", "Сложное ТЗ, 40 р.д."],
+    ["oi", "Один источник, 23 р.д."],
+    ["invoice", "Счёт, 3 р.д."],
+  ]));
+  form.appendChild(field("Оплата", "select", r.pay, (value) => setEdit(r.id, { pay: value }), [
+    ["advance", "Аванс до отгрузки"],
+    ["prepay", "Предоплата до выдачи"],
+    ["post", "После приёмки"],
+  ]));
+  form.appendChild(field("Статус", "select", r.state, (value) => setEdit(r.id, { state: value }), [
+    ["notStarted", "Заявку не подали"],
+    ["procedure", "Идёт процедура"],
+    ["awaitPay", "Ждёт предоплату"],
+    ["transit", "В пути"],
+    ["service", "Оказывается"],
+    ["unpaid", "Остаток не оплачен"],
+    ["slip", "Сдвиг подрядчика"],
+    ["done", "Принято"],
+  ]));
+  if (r.state === "slip") {
+    form.appendChild(field("Сдвиг, календарных дней", "number", r.slipCal || 0, (value) => setEdit(r.id, { slipCal: Number(value) })));
+  }
+  form.appendChild(field("Лимит, тенге", "number", r.limit == null ? "" : r.limit, (value) => setEdit(r.id, { limit: value === "" ? null : Number(value) })));
+  return form;
+}
+function packageBox() {
+  const box = el("div", "pack");
+  box.appendChild(el("b", "", "Пакет документов"));
+  box.appendChild(el("p", "", "Устав задаёт проект и потолок. Лоты ниже — управленческая раскладка закупок и подрядов. Новая строка из пакета встаёт черновиком: дату и лимит подтверждает менеджер."));
+  const form = el("div", "editor");
+  const name = document.createElement("input");
+  name.placeholder = "Наименование ТРУ";
+  const who = document.createElement("input");
+  who.placeholder = "Контрагент";
+  const add = el("button", "tag");
+  add.type = "button";
+  add.textContent = "Добавить черновик";
+  add.addEventListener("click", () => {
+    const title = name.value.trim();
+    if (!title) return;
+    state.drafts.push({
+      id: "draft-" + state.seq,
+      name: title,
+      who: who.value.trim() || "Не назван",
+      method: "zcp",
+      pay: "post",
+      lead: 15,
+      need: "",
+      charterStart: M.TODAY,
+      state: "notStarted",
+      source: "Черновик из пакета документов",
+    });
+    state.seq += 1;
+    state.open = state.drafts[state.drafts.length - 1].id;
+    name.value = "";
+    who.value = "";
+    render();
+  });
+  form.appendChild(name);
+  form.appendChild(who);
+  form.appendChild(add);
+  box.appendChild(form);
+  return box;
+}
+function budgetView(list, b) {
+  const wrap = el("div");
+  const note = el("div", "pack");
+  note.appendChild(el("b", "", "Бюджет закупок с даты устава"));
+  note.appendChild(el("p", "", "Потолок проекта " + b.ceilingText + ". Лимиты лотов — управленческая раскладка для контроля, не приложение к уставу. Освоение в тенге считается по заполненным лимитам, поставка по-прежнему считается фактом приёмки."));
+  if (b.filled) note.appendChild(el("p", "", "Утверждено " + M.formatTenge(b.sum) + (b.over ? ". Сумма выше потолка проекта." : ".")));
+  const m = pack().money;
+  note.appendChild(el("p", "", "Обязались договором " + M.formatTenge(m.committed) + ". Оплачено " + M.formatTenge(m.paid) + ". Поставлено " + M.formatTenge(m.delivered) + "."));
+  wrap.appendChild(note);
+  const table = document.createElement("table");
+  const hr = document.createElement("tr");
+  ["ТРУ", "Статус", "Лимит"].forEach((t) => hr.appendChild(el("th", "", t)));
+  const head = document.createElement("thead");
+  head.appendChild(hr);
+  table.appendChild(head);
+  const body = document.createElement("tbody");
+  list.forEach((r) => {
+    const tr = document.createElement("tr");
+    tr.appendChild(cell(r.name));
+    tr.appendChild(cell(r.limit == null ? "не утверждён" : "утверждён", r.limit == null ? "chip bad" : "chip ok"));
+    const td = document.createElement("td");
+    td.appendChild(field("", "number", r.limit == null ? "" : r.limit, (value) => setEdit(r.id, { limit: value === "" ? null : Number(value) })));
+    tr.appendChild(td);
+    body.appendChild(tr);
+  });
+  table.appendChild(body);
+  wrap.appendChild(table);
+  return wrap;
+}
+function riskView(items) {
+  const wrap = el("div", "risks");
+  const journal = el("article", "sheet");
+  const recorded = items.filter((risk) => state.decisions[risk.id]);
+  journal.appendChild(el("h3", "", "Журнал решений"));
+  journal.appendChild(el("p", "", recorded.length ? "Решение, записанное на штабе или здесь, остаётся до конца сессии." : "Журнал пуст. Решение: принять, эскалировать или сдвинуть веху."));
+  if (recorded.length) {
+    const list = el("ul");
+    recorded.forEach((risk) => {
+      const li = document.createElement("li");
+      li.style.padding = "7px 0";
+      li.appendChild(el("b", "", risk.title));
+      li.appendChild(el("span", "", decisionLabel(state.decisions[risk.id]) + " · " + risk.cause));
+      list.appendChild(li);
+    });
+    journal.appendChild(list);
+  }
+  wrap.appendChild(journal);
+  items.forEach((risk) => {
+    const card = el("article", "note " + risk.tone);
+    card.appendChild(el("div", "tag", risk.level + " · " + risk.cause));
+    card.appendChild(el("p", "", risk.title));
+    card.appendChild(el("p", "", risk.text));
+    card.appendChild(el("p", "", "Как поступить: " + risk.response));
+    const decision = state.decisions[risk.id];
+    card.appendChild(el("p", "", decision ? "Решение: " + decisionLabel(decision) : "Решение ещё не записано."));
+    card.appendChild(decisionForm(risk));
+    wrap.appendChild(card);
+  });
+  return wrap;
+}
+function decisionLabel(value) {
+  return { accept: "принять и следить", escalate: "эскалировать", move: "сдвинуть веху" }[value] || value;
+}
+function toggle(id) {
+  state.open = state.open === id ? null : id;
+  render();
+}
+function setView(view) {
+  state.view = view;
+  state.open = null;
+  render();
+}
+const ORDER = VIEWS;
+document.querySelectorAll(".nav button").forEach((btn) => {
+  btn.addEventListener("click", () => setView(btn.dataset.view));
+});
+document.getElementById("fact-switch").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  state.factMode = btn.dataset.fact;
+  render();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+  if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+  const i = ORDER.indexOf(state.view);
+  const step = e.key === "ArrowRight" ? 1 : -1;
+  setView(ORDER[(i + step + ORDER.length) % ORDER.length]);
+});
+readHash();
+render();
+</script>
+</body>
+</html>
