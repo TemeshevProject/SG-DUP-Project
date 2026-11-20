@@ -93,7 +93,9 @@
   tr.open td { background: #f3f7fd; }
   .who { color: #5d6b7a; }
   .chart { position: relative; height: 22px; }
-  .gridline, .mark, .bar, .need { position: absolute; top: 0; bottom: 0; }
+  .gridline, .mark, .bar, .need, .fact { position: absolute; top: 0; bottom: 0; }
+  .fact { width: 0; border-left: 3px solid var(--green); z-index: 2; }
+  .fact.bad { border-left-color: var(--red); }
   .gridline { width: 1px; background: transparent; }
   .mark { width: 0; border-left: 1.5px dashed var(--green); }
   .mark.today { border-left: 1px solid var(--today); }
@@ -178,7 +180,7 @@
     <div class="logo">Цифровой ПМ</div>
     <button type="button" data-view="staff">Штаб</button>
     <button type="button" data-view="proekt">План проекта</button>
-    <button type="button" data-view="zakupki">План закупок</button>
+    <button type="button" data-view="zakupki">План-факт закупок</button>
     <button type="button" data-view="dogovory">Расходные договоры</button>
     <button type="button" data-view="platezhi">Платежи</button>
     <button type="button" data-view="budget">Бюджет закупок</button>
@@ -192,6 +194,10 @@
       <div class="titles">
         <h1>Услуги по предоставлению данных ИС ДОБ · Алматинская область</h1>
         <p class="sub" id="sub"></p>
+      </div>
+      <div class="switch" id="fact-switch" hidden>
+        <button type="button" data-fact="plan">План</button>
+        <button type="button" data-fact="both">План-факт</button>
       </div>
     </div>
     <div class="workspace">
@@ -208,7 +214,7 @@
 </div>
 <script>
 const M = window.DigitalPm;
-const state = { view: "staff", open: null, edits: {}, drafts: [], seq: 1, decisions: {} };
+const state = { view: "staff", open: null, edits: {}, drafts: [], seq: 1, decisions: {}, factMode: "both" };
 const VIEW_ALIAS = { gantt: "zakupki", ispolnenie: "platezhi" };
 const VIEWS = ["staff", "proekt", "zakupki", "dogovory", "platezhi", "budget", "risk", "uvedomleniya"];
 function pack() { return M.control(state.edits, state.drafts); }
@@ -250,6 +256,11 @@ function render() {
     else btn.removeAttribute("aria-current");
   });
   document.querySelector(".workspace").classList.toggle("solo", state.view === "uvedomleniya" || state.view === "risk");
+  const factSwitch = document.getElementById("fact-switch");
+  factSwitch.hidden = state.view !== "zakupki";
+  factSwitch.querySelectorAll("button").forEach((btn) => {
+    btn.setAttribute("aria-pressed", String(btn.dataset.fact === state.factMode));
+  });
 
   const kpis = document.getElementById("kpis");
   kpis.replaceChildren();
@@ -526,7 +537,7 @@ function kpiCards(list, plan, s, notesData) {
   }
   if (state.view === "zakupki") {
     return [
-      [String(s.total), "строк в плане закупок"],
+      [String(s.total), "строк в плане-факте"],
       [String(s.total - s.late), "к дате потребности"],
       [String(s.late), "с отклонением", s.late ? "bad" : ""],
       [M.shortDate(M.COMMISSION), "ввод в ПЭ"],
@@ -788,9 +799,12 @@ function gantt(list) {
   table.appendChild(body);
   wrap.appendChild(table);
   const legend = el("div", "legend");
-  legend.appendChild(spanSw("navy", "срок по плану"));
-  legend.appendChild(spanSw("late", "позже даты"));
-  legend.appendChild(spanSw("miss", "заявку не подали"));
+  legend.appendChild(spanSw("navy", "план, от старта до потребности"));
+  legend.appendChild(el("span", "", "Чёрная черта — дата потребности."));
+  if (state.factMode !== "plan") {
+    legend.appendChild(factSwatch("черта факта: зелёная в срок, красная позже"));
+    legend.appendChild(spanSw("late", "хвост факта после плана"));
+  }
   legend.appendChild(el("span", "", "Пунктир — ввод в ПЭ " + M.shortDate(M.COMMISSION) + ". Серая черта — срез " + M.shortDate(M.TODAY) + "."));
   wrap.appendChild(legend);
   return wrap;
@@ -806,6 +820,20 @@ function spanSw(cls, text) {
   return s;
 }
 
+function factIso(r) {
+  if (r.delivered) return r.need || "";
+  return r.forecastIso || "";
+}
+function factSwatch(text) {
+  const s = el("span");
+  const i = el("i", "sw");
+  i.style.width = "3px";
+  i.style.height = "12px";
+  i.style.background = "var(--green)";
+  s.appendChild(i);
+  s.append(text);
+  return s;
+}
 function bar(r) {
   const box = el("div", "chart");
   M.months().forEach((m) => {
@@ -813,31 +841,32 @@ function bar(r) {
     g.style.left = M.pos(m.start) + "%";
     box.appendChild(g);
   });
-  if (r.state === "notStarted") {
-    const missed = el("i", "bar miss");
-    missed.style.left = M.pos(r.requiredIso) + "%";
-    missed.style.width = Math.max(0.8, M.pos(M.TODAY) - M.pos(r.requiredIso)) + "%";
-    box.appendChild(missed);
-    const red = el("i", "bar late");
-    red.style.left = M.pos(M.TODAY) + "%";
-    red.style.width = Math.max(0.8, M.pos(r.forecastIso) - M.pos(M.TODAY)) + "%";
-    box.appendChild(red);
-  } else {
+  if (r.charterStart && r.need) {
     const planned = el("i", "bar navy");
     planned.style.left = M.pos(r.charterStart) + "%";
     planned.style.width = Math.max(0.8, M.pos(r.need) - M.pos(r.charterStart)) + "%";
     box.appendChild(planned);
-    if (r.late) {
-      const red = el("i", "bar late");
-      red.style.left = M.pos(r.need) + "%";
-      red.style.width = Math.max(0.8, M.pos(r.forecastIso) - M.pos(r.need)) + "%";
-      box.appendChild(red);
-    }
   }
-  const need = el("i", "need");
-  need.style.left = M.pos(r.need) + "%";
-  need.title = "Дата потребности " + M.shortDate(r.need);
-  box.appendChild(need);
+  const fact = factIso(r);
+  const showFact = state.factMode !== "plan" && fact;
+  if (showFact && r.need && fact > r.need) {
+    const red = el("i", "bar late");
+    red.style.left = M.pos(r.need) + "%";
+    red.style.width = Math.max(0.8, M.pos(fact) - M.pos(r.need)) + "%";
+    box.appendChild(red);
+  }
+  if (r.need) {
+    const need = el("i", "need");
+    need.style.left = M.pos(r.need) + "%";
+    need.title = "План " + M.shortDate(r.need);
+    box.appendChild(need);
+  }
+  if (showFact) {
+    const tick = el("i", "fact" + (r.need && fact > r.need ? " bad" : ""));
+    tick.style.left = M.pos(fact) + "%";
+    tick.title = (r.delivered ? "Факт " : "Прогноз факта ") + M.shortDate(fact);
+    box.appendChild(tick);
+  }
   const today = el("i", "mark today");
   today.style.left = M.pos(M.TODAY) + "%";
   box.appendChild(today);
@@ -1096,6 +1125,12 @@ function setView(view) {
 const ORDER = VIEWS;
 document.querySelectorAll(".nav button").forEach((btn) => {
   btn.addEventListener("click", () => setView(btn.dataset.view));
+});
+document.getElementById("fact-switch").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  state.factMode = btn.dataset.fact;
+  render();
 });
 document.addEventListener("keydown", (e) => {
   if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
